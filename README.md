@@ -203,4 +203,4 @@ The test suite uses JUnit 4, DBUnit with an HSQLDB in-memory database for DAO te
 
 ## Repository
 
-[DeferralSystem on GitHub](https://github.com/pio-o-connell/Java-Spring---DeferralSystem)
+[DefermentSystem on GitHub](https://github.com/pio-o-connell/Deferment.git)
