@@ -1,4 +1,4 @@
-# DeferralSystem
+# Deferment System
 
 A Spring MVC web application for managing academic deferral requests. Authorised users can submit, review, approve, or reject deferrals for individual modules or entire programmes. Supporting entities — students, lecturers, programmes, modules, semesters, and registrations — are all managed through the same application.
 
