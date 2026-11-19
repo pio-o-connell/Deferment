@@ -1,131 +1,201 @@
 # DeferralSystem
 
-## Overview
+A Spring MVC web application for managing academic deferral requests. Authorised users can submit, review, approve, or reject deferrals for individual modules or entire programmes. Supporting entities — students, lecturers, programmes, modules, semesters, and registrations — are all managed through the same application.
 
-DeferralSystem is a web application for managing student deferrals within an academic programme.
-
-The application allows authorised users to manage students, lecturers, programmes, modules, semesters and registrations, while tracking whether individual deferral requests have been approved.
+---
 
 ## Features
 
-* Login and role-based access through Spring Security
-* View and search student records
-* View student deferrals and related academic information
-* Create, list and update deferral requests
-* Approve or reject deferral requests
-* Download the deferral form
-* Manage lecturer, programme, module and semester records
-* JDBC-backed persistence for academic and authentication data
-* Email-related service support for application notifications
-* JSP pages organised into reusable layouts with Apache Tiles
+- Form-based login with JDBC-backed Spring Security
+- Create module or programme deferrals through guided multi-step flows
+- Upload a supporting PDF document for each deferral request
+- List and filter deferrals by student, module, programme, or coordinator
+- Approve or reject individual deferral records
+- Download the uploaded deferral form by ID
+- Full CRUD management for students, lecturers, modules, and programmes
+- Email notifications sent to admissions on deferral submission
+- Shared page layouts via Apache Tiles (header/footer on every page)
 
-## Application Architecture
+---
 
-The application follows a layered Spring MVC architecture:
+## Architecture
 
-* **Controllers** handle web requests and prepare model data for the JSP views.
-* **Services** contain application operations for deferrals, students, lecturers, modules, programmes, registrations and semesters.
-* **Repositories** use Spring JDBC and DAO classes to read and write database records.
-* **Domain classes and mappers** represent application data and map SQL results to Java objects.
-* **JSP views** provide the web interface, with Apache Tiles used for shared page layouts.
-* **Spring Security** provides form login and JDBC-based user and role lookup.
+The application follows a standard layered Spring MVC design.
+
+```
+HTTP Request → Spring Security Filter → DispatcherServlet
+                                              ↓
+                                        @Controller
+                                              ↓
+                                         @Service
+                                              ↓
+                                    @Repository (JdbcDaoSupport)
+                                              ↓
+                                           Database
+                                              ↓
+                                     ModelAndView → JSP (via Tiles)
+```
+
+### Packages
+
+| Package | Responsibility |
+|---|---|
+| `com.defermentsystem.controllers` | Spring MVC controllers and the embedded Tomcat launcher |
+| `com.defermentsystem.domain` | Domain models (`Deferral`, `Student`, `Lecturer`, `Module`, `Programme`, `Mail`) and JDBC row mappers |
+| `com.defermentsystem.repository` | DAO interfaces and `JdbcDaoSupport` implementations, plus `HerokuDataSourceFactory` |
+| `com.defermentsystem.service` | Service interfaces and thin delegating implementations |
+| `com.defermentsystem.exceptions` | `FormUploadException` for non-PDF uploads |
+
+---
+
+## Deferral Flows
+
+**Module deferral** (`/admin/deferral/addModuleDeferralPage1`)
+
+1. User enters a student ID and selects a module with its CRN.
+2. The DAO JOINs `programme` and `registration` to look up the student's coordinator.
+3. A row is inserted into `deferrals` and the uploaded PDF is saved to the server under its generated `Def_ID`.
+4. An email is sent to admissions confirming the submission.
+
+**Programme deferral** (`/admin/deferral/addProgrammeDeferralPage1`)
+
+1. User enters a student ID and programme ID.
+2. The DAO fetches all modules registered for that student and programme, then bulk-inserts one deferral row per module using `batchUpdate`.
+3. The uploaded PDF is saved once for each generated deferral ID.
+4. An email is sent to admissions, and on approval the student's registrations are removed from the `registration` table.
+
+---
 
 ## Technologies
 
-* Java 8
-* Spring Framework 4
-* Spring MVC
-* Spring Security
-* Spring JDBC and Spring transactions
-* Apache Tomcat
-* JSP and JSTL
-* Apache Tiles
-* Maven
-* MySQL Connector/J
-* PostgreSQL support for Heroku deployment
-* JUnit, DBUnit and Selenium for testing
+| Concern | Version |
+|---|---|
+| Java | 8 |
+| Spring Framework | 4.0.0.RELEASE |
+| Spring Security | 3.2.5.RELEASE |
+| Persistence | Spring JDBC (`JdbcTemplate` / `JdbcDaoSupport`) |
+| View layer | JSP, JSTL, Apache Tiles 3.0.1 |
+| Validation | Hibernate Validator 5.0.1 / Bean Validation 1.1 |
+| Build | Maven 3 (WAR — `SpringWebProject.war`) |
+| Local database | MySQL 5.x (connector 5.1.6) |
+| Cloud database | PostgreSQL 9.4 (Heroku) |
+| Embedded server | Apache Tomcat 8.5.23 |
+| File upload | Apache Commons FileUpload 1.3.1 |
+| Email | JavaMail 1.4.7 |
+| Testing | JUnit 4.11, DBUnit 2.4.9, Spring Test DBUnit 1.1.0, HSQLDB, Selenium 2.44 |
+
+---
 
 ## Database
 
-The included `DatabaseSetup.sql` script creates a MySQL database named `spring_project`.
-
-The schema contains tables for:
+Run `DatabaseSetup.sql` to create the `spring_project` MySQL schema.
 
 | Table | Description |
-| ----- | ----------- |
-| **deferrals** | Student deferral requests and approval status |
-| **student** | Student details |
-| **lecturer** | Lecturer details |
-| **modules** | Module and CRN information |
-| **programme** | Programme and coordinator information |
-| **registration** | Student module and programme registrations |
-| **semester** | Programme semester information |
-| **users** | Application login accounts |
-| **user_roles** | User authorities used by Spring Security |
+|---|---|
+| `deferrals` | Deferral requests: student, lecturer, programme, module, approval status |
+| `student` | Student records |
+| `lecturer` | Lecturer records |
+| `modules` | Module and CRN information |
+| `programme` | Programme and coordinator |
+| `registration` | Junction table: student, CRN, programme |
+| `semester` | Semester records |
+| `users` | Login accounts |
+| `user_roles` | Roles/authorities for Spring Security |
 
-Database connection properties are read from `src/main/resources/prop.properties`. The project also contains a PostgreSQL data-source implementation for deployment environments such as Heroku.
+Spring Security reads from `users` and `user_roles` via the JDBC user-service configured in `spring-security.xml`.
+
+---
+
+## Configuration
+
+### Local (MySQL)
+
+Edit `src/main/resources/prop.properties`:
+
+```properties
+db.driver=com.mysql.jdbc.Driver
+db.url=jdbc:mysql://localhost:3307/spring_project
+db.username=root
+db.password=yourpassword
+```
+
+### Heroku (PostgreSQL)
+
+`HerokuDataSourceFactory` reads the `DATABASE_URL` environment variable (Heroku's standard `postgres://user:pass@host:port/db` format) and constructs a PostgreSQL JDBC URL at startup. No code change is needed — if `DATABASE_URL` is present, it takes precedence.
+
+---
 
 ## Project Structure
 
 ```text
-Java-Spring---DeferralSystem/
-│
+Deferment/
 ├── pom.xml
 ├── DatabaseSetup.sql
 ├── Procfile
-├── system.properties
 │
 ├── src/
 │   ├── main/
-│   │   ├── java/com/grouptwo/
-│   │   │   ├── controllers/
-│   │   │   ├── domain/
-│   │   │   ├── exceptions/
-│   │   │   ├── repository/
-│   │   │   └── service/
+│   │   ├── java/com/defermentsystem/
+│   │   │   ├── controllers/      # MVC controllers + HerokuMain launcher
+│   │   │   ├── domain/           # Domain models + row mappers
+│   │   │   ├── exceptions/       # FormUploadException
+│   │   │   ├── repository/       # DAO interfaces + JDBC implementations
+│   │   │   └── service/          # Service interfaces + implementations
 │   │   │
 │   │   ├── resources/
-│   │   │   ├── configuration.xml
-│   │   │   ├── databaseEntries.xml
-│   │   │   └── prop.properties
+│   │   │   ├── configuration.xml # Datasource + transaction manager (classpath)
+│   │   │   ├── databaseEntries.xml # DBUnit seed data
+│   │   │   └── prop.properties   # Local MySQL connection settings
 │   │   │
 │   │   └── webapp/
-│   │       ├── resources/
 │   │       └── WEB-INF/
-│   │           ├── jsp/
-│   │           ├── configuration.xml
-│   │           ├── mvc-dispatcher-servlet.xml
-│   │           ├── spring-security.xml
-│   │           └── tiles.xml
+│   │           ├── jsp/           # JSP views grouped by entity
+│   │           ├── configuration.xml          # Datasource config (WEB-INF)
+│   │           ├── mvc-dispatcher-servlet.xml # MVC + Tiles config
+│   │           ├── spring-security.xml        # Authentication + authorisation
+│   │           └── tiles.xml                  # ~30 Tiles view definitions
 │   │
 │   └── test/
-│       └── java/com/grouptwo/
+│       └── java/com/defermentsystem/
 │
-└── target/
-    └── ... generated Maven build output
+└── target/   # Maven build output
 ```
 
-## Main Application Packages
+---
 
-| Package | Responsibility |
-| ------- | -------------- |
-| `com.grouptwo.controllers` | Spring MVC controllers and the embedded Tomcat entry point |
-| `com.grouptwo.domain` | Domain objects and database row mappers |
-| `com.grouptwo.repository` | DAO interfaces and JDBC repository implementations |
-| `com.grouptwo.service` | Service interfaces and application logic |
-| `com.grouptwo.exceptions` | Application-specific exceptions |
+## Building and Running
 
-## Development
-
-The project is built with Maven and produces a WAR file named `SpringWebProject.war`.
-
-After configuring the database properties and creating the schema, the project can be packaged with:
+**Build the WAR:**
 
 ```bash
-mvn package
+mvn clean package -Dmaven.test.skip=true
 ```
 
-The repository includes a `Procfile` and an embedded Tomcat launcher for running the packaged web application on Heroku-style environments. The application uses the `PORT` environment variable when it is available and otherwise defaults to port `8080`.
+**Run locally (embedded Tomcat):**
+
+```bash
+java -cp target/SpringWebProject/WEB-INF/classes:... com.defermentsystem.controllers.HerokuMain
+```
+
+Or deploy `target/SpringWebProject.war` to any Servlet 3.1-compatible container (e.g. standalone Apache Tomcat 8.5.x).
+
+**Heroku:** the `Procfile` launches `HerokuMain`, which starts embedded Tomcat on `$PORT` (default `8080`) and serves the unpacked WAR produced by the Maven Ant unzip step.
+
+---
+
+## Security Notes
+
+- Authentication is JDBC-based: credentials are stored in the `users` table and roles in `user_roles`.
+- The `intercept-url` rule restricting `/admin/**` to `ROLE_ADMIN` is currently **commented out** in `spring-security.xml`. Any authenticated user can reach all admin endpoints. Re-enable it before deploying to a production environment.
+- Form submission requires Spring Security's CSRF protection, which is enabled by default under `auto-config="true"`.
+
+---
+
+## Testing
+
+The test suite uses JUnit 4, DBUnit with an HSQLDB in-memory database for DAO tests, and Selenium for browser-based UI tests. A sample DAO test is at `src/test/java/com/defermentsystem/repository/DeferralJdbcDaoSupportTest.java`.
+
+---
 
 ## Author
 
