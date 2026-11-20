@@ -1,0 +1,156 @@
+﻿[INFO] Scanning for projects...
+[WARNING] 
+[WARNING] Some problems were encountered while building the effective model for com.defermentsystem:SpringWebProject:war:1.0-SNAPSHOT
+[WARNING] 'dependencies.dependency.(groupId:artifactId:type:classifier)' must be unique: org.slf4j:slf4j-log4j12:jar -> duplicate declaration of version 1.5.8 @ line 246, column 13
+[WARNING] 
+[WARNING] It is highly recommended to fix these problems because they threaten the stability of your build.
+[WARNING] 
+[WARNING] For this reason, future Maven versions might no longer support building such malformed projects.
+[WARNING] 
+[INFO] 
+[INFO] ----------------< com.defermentsystem:SpringWebProject >----------------
+[INFO] Building SpringWebProject Maven Webapp 1.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ war ]---------------------------------
+[INFO] 
+[INFO] --- clean:3.2.0:clean (default-clean) @ SpringWebProject ---
+[INFO] Deleting C:\Users\pio_o\OneDrive\Documents\updates-to-projects\Deferment\target
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ SpringWebProject ---
+[WARNING] Using platform encoding (Cp1252 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] Copying 3 resources from src\main\resources to target\classes
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ SpringWebProject ---
+[INFO] Changes detected - recompiling the module!
+[WARNING] File encoding has not been set, using platform encoding Cp1252, i.e. build is platform dependent!
+[INFO] Compiling 56 source files to C:\Users\pio_o\OneDrive\Documents\updates-to-projects\Deferment\target\classes
+[INFO] /C:/Users/pio_o/OneDrive/Documents/updates-to-projects/Deferment/src/main/java/com/defermentsystem/repository/ModuleJdbcDaoSupport.java: Some input files use unchecked or unsafe operations.
+[INFO] /C:/Users/pio_o/OneDrive/Documents/updates-to-projects/Deferment/src/main/java/com/defermentsystem/repository/ModuleJdbcDaoSupport.java: Recompile with -Xlint:unchecked for details.
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ SpringWebProject ---
+[WARNING] Using platform encoding (Cp1252 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory C:\Users\pio_o\OneDrive\Documents\updates-to-projects\Deferment\src\test\resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ SpringWebProject ---
+[INFO] Changes detected - recompiling the module!
+[WARNING] File encoding has not been set, using platform encoding Cp1252, i.e. build is platform dependent!
+[INFO] Compiling 12 source files to C:\Users\pio_o\OneDrive\Documents\updates-to-projects\Deferment\target\test-classes
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ SpringWebProject ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junit4.JUnit4Provider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.defermentsystem.mvc.DeferralTest
+mvn : log4j:WARN No appenders could be found for logger 
+(org.springframework.test.context.junit4.SpringJUnit4ClassRunner).
+At line:1 char:1
++ mvn clean package 2>&1 | Out-File -FilePath "build-log.txt" 
+-Encoding ...
++ ~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (log4j:WARN No a...t4Clas 
+   sRunner).:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+log4j:WARN Please initialize the log4j system properly.
+org.openqa.selenium.firefox.NotConnectedException: Unable to connect 
+to host 127.0.0.1 on port 7055 after 45000 ms. Firefox console output:
+console.warn: RSLoader: Recipe 
+new-tab-159120261002163917-to-release-157 not returned from 
+collection nimbus-secure-experiments because it does not contain at 
+least one required feature ID.
+console.warn: RSLoader: Recipe 
+new-tab-160020261011195215-to-release-158 not returned from 
+collection nimbus-secure-experiments because it does not contain at 
+least one required feature ID.
+console.warn: RSLoader: Recipe 
+new-tab-160220261016183914-to-release-158 not returned from 
+collection nimbus-secure-experiments because it does not contain at 
+least one required feature ID.
+console.warn: RSLoader: Recipe 
+new-tab-train-hop-160420261021190336-to-release-159 not returned from 
+collection nimbus-secure-experiments because it does not contain at 
+least one required feature ID.
+console.warn: RSLoader: Recipe 
+new-tab-train-hop-161020261102193311-to-release-15901 not returned 
+from collection nimbus-secure-experiments because it does not contain 
+at least one required feature ID.
+console.warn: RSLoader: Recipe 
+new-tab-train-hop-16212026111830642-to-release-160 not returned from 
+collection nimbus-secure-experiments because it does not contain at 
+least one required feature ID.
+
+	at org.openqa.selenium.firefox.internal.NewProfileExtensionConnection
+.start(NewProfileExtensionConnection.java:118)
+	at org.openqa.selenium.firefox.FirefoxDriver.startClient(FirefoxDrive
+r.java:246)
+	at org.openqa.selenium.remote.RemoteWebDriver.<init>(RemoteWebDriver.
+java:114)
+	at org.openqa.selenium.firefox.FirefoxDriver.<init>(FirefoxDriver.jav
+a:191)
+	at org.openqa.selenium.firefox.FirefoxDriver.<init>(FirefoxDriver.jav
+a:186)
+	at org.openqa.selenium.firefox.FirefoxDriver.<init>(FirefoxDriver.jav
+a:182)
+	at org.openqa.selenium.firefox.FirefoxDriver.<init>(FirefoxDriver.jav
+a:99)
+	at com.defermentsystem.mvc.DeferralTest.setUp(DeferralTest.java:58)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorIm
+pl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAc
+cessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(Framew
+orkMethod.java:47)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(Reflective
+Callable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(Framewor
+kMethod.java:44)
+	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefor
+es.java:24)
+	at org.springframework.test.context.junit4.statements.RunBeforeTestMe
+thodCallbacks.evaluate(RunBeforeTestMethodCallbacks.java:74)
+	at org.junit.internal.runners.statements.RunAfters.evaluate(RunAfters
+.java:27)
+	at org.springframework.test.context.junit4.statements.RunAfterTestMet
+hodCallbacks.evaluate(RunAfterTestMethodCallbacks.java:83)
+	at org.springframework.test.context.junit4.statements.SpringRepeat.ev
+aluate(SpringRepeat.java:72)
+	at org.springframework.test.context.junit4.SpringJUnit4ClassRunner.ru
+nChild(SpringJUnit4ClassRunner.java:232)
+	at org.springframework.test.context.junit4.SpringJUnit4ClassRunner.ru
+nChild(SpringJUnit4ClassRunner.java:89)
+	at org.junit.runners.ParentRunner$3.run(ParentRunner.java:238)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:63)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:236)
+	at org.junit.runners.ParentRunner.access$000(ParentRunner.java:53)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:229)
+	at org.springframework.test.context.junit4.statements.RunBeforeTestCl
+assCallbacks.evaluate(RunBeforeTestClassCallbacks.java:61)
+	at org.springframework.test.context.junit4.statements.RunAfterTestCla
+ssCallbacks.evaluate(RunAfterTestClassCallbacks.java:71)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:309)
+	at org.springframework.test.context.junit4.SpringJUnit4ClassRunner.ru
+n(SpringJUnit4ClassRunner.java:175)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.execute(JUnit4Prov
+ider.java:316)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.executeWithRerun(J
+Unit4Provider.java:240)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.executeTestSet(JUn
+it4Provider.java:214)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.invoke(JUnit4Provi
+der.java:155)
+	at org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(F
+orkedBooter.java:385)
+	at org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter
+.java:162)
+	at org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.jav
+a:507)
+	at org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.ja
+va:495)
+Nov 20, 2026 11:47:24 PM 
+org.openqa.selenium.os.UnixProcess$SeleniumWatchDog destroyHarder
+INFO: Command failed to close cleanly. Destroying forcefully (v2). 
+org.openqa.selenium.os.UnixProcess$SeleniumWatchDog@7eb01b12
