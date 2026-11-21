@@ -1,0 +1,75 @@
+
+# ==================================================
+# 1. Maven / Java build output
+# ==================================================
+
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# ==================================================
+# 2. IDE configuration
+# ==================================================
+
+# Eclipse
+.classpath
+.project
+.settings/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# VS Code
+.vscode/
+
+# ==================================================
+# 3. Operating system files
+# ==================================================
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==================================================
+# 4. Logs and temporary files
+# ==================================================
+
+*.log
+logs/
+tmp/
+temp/
+
+# ==================================================
+# 5. Environment variables and secrets
+# ==================================================
+
+.env
+.env.*
+!.env.example
+
+# Local database configuration containing credentials
+src/main/resources/prop.properties
+
+# Local configuration overrides
+*.local.properties
+application-local.properties
+
+# ==================================================
+# 6. Runtime uploaded documents
+# ==================================================
+
+# Student-uploaded deferral forms
+src/main/webapp/resources/form/uploadedForms/*
+!src/main/webapp/resources/form/uploadedForms/.gitkeep
+
+# ==================================================
+# 7. Backup files
+# ==================================================
+
+*.bak
+*.old
+*.tmp
+*~
