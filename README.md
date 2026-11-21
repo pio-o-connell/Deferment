@@ -20,21 +20,139 @@ A Spring MVC web application for managing academic deferral requests. Authorised
 
 ## Architecture
 
-The application follows a standard layered Spring MVC design.
+The application uses two Spring `WebApplicationContext` instances: a shared Root context and a request-handling MVC Child context.
 
+### Root WebApplicationContext
+
+The Root context is the shared application infrastructure. It is configured by `configuration.xml` and `spring-security.xml` and should contain:
+
+- The `DataSource`
+- The transaction manager
+- `TransactionTemplate`
+- `JavaMailSender`
+- Repository/DAO beans
+- Service beans
+- Spring Security configuration
+
+The Root context should scan only `com.defermentsystem.service` and `com.defermentsystem.repository`. It should not scan all application packages or depend on MVC controllers.
+
+### MVC Child WebApplicationContext
+
+The Child context is created by the `DispatcherServlet` and is configured by `mvc-dispatcher-servlet.xml`. It should contain:
+
+- Spring MVC controllers
+- MVC annotation handling
+- Validation
+- View resolution
+- Apache Tiles configuration
+- Multipart request handling
+- Static resource handling
+
+The Child context should scan only `com.defermentsystem.controllers`.
+
+### Parent–Child bean visibility
+
+The Root context is the Parent and the `DispatcherServlet` MVC context is the Child:
+
+- The Child can access beans defined in the Parent.
+- The Parent cannot access beans defined in the Child.
+- Controllers can therefore inject services from the Root context.
+- Services can inject repositories/DAOs from the Root context.
+- The Root context should not depend on MVC controllers.
+
+Keeping services and repositories in the Root context and controllers in the Child prevents broad component scanning from creating duplicate service and repository instances in both contexts.
+
+```mermaid
+flowchart LR
+    HTTP[HTTP request] --> Filter[Spring Security filter]
+
+    subgraph Root["Root WebApplicationContext (Parent)"]
+        Security[Spring Security]
+        Service[Service bean]
+        Repository[Repository / DAO bean]
+        DataSource[DataSource]
+        Database[(Database)]
+
+        Security -. uses .-> DataSource
+        Service --> Repository
+        Repository --> DataSource
+        DataSource --> Database
+    end
+
+    subgraph Child["MVC WebApplicationContext (Child)"]
+        Dispatcher[DispatcherServlet]
+        Controller[Controller]
+        ModelAndView[ModelAndView]
+        View[Tiles/JSP view resolution]
+
+        Dispatcher --> Controller
+        Controller --> ModelAndView
+        ModelAndView --> View
+    end
+
+    Filter --> Security
+    Security --> Dispatcher
+    Root -. parent of .-> Child
+    Controller -. injects and calls .-> Service
 ```
-HTTP Request → Spring Security Filter → DispatcherServlet
-                                              ↓
-                                        @Controller
-                                              ↓
-                                         @Service
-                                              ↓
-                                    @Repository (JdbcDaoSupport)
-                                              ↓
-                                           Database
-                                              ↓
-                                     ModelAndView → JSP (via Tiles)
+
+The MVC flow resolves the returned `ModelAndView` through Apache Tiles and ultimately renders the configured JSP view.
+
+### Configuration responsibilities
+
+| File | Responsibility |
+|---|---|
+| `configuration.xml` | Root context infrastructure, component scanning for services and repositories, DataSource and transaction configuration |
+| `spring-security.xml` | Root context security configuration and JDBC authentication |
+| `mvc-dispatcher-servlet.xml` | MVC Child context, controller scanning, annotation handling, validation, view resolution, Tiles and multipart configuration |
+
+In `web.xml`, `ContextLoaderListener` loads the Root context. The `DispatcherServlet` is named `mvc-dispatcher`, so it automatically looks for `/WEB-INF/mvc-dispatcher-servlet.xml` as its MVC Child context.
+
+The current `web.xml` contains a `contextConfigLocation` entry that lists `mvc-dispatcher-servlet.xml`, `configuration.xml`, and `spring-security.xml`. That configuration currently makes all three files available to the context loaded by `ContextLoaderListener`; it is not the final intended separation described above. Under the proposed arrangement, the Root files would be `configuration.xml` and `spring-security.xml`, while `mvc-dispatcher-servlet.xml` would remain the automatically loaded Child context file. These XML changes are documentation of the intended configuration only and have not been applied.
+
+### Why Spring Security remains in the Root context
+
+`DelegatingFilterProxy` looks up the `springSecurityFilterChain` bean in the Root `WebApplicationContext` by default. The JDBC authentication configuration also requires access to the Root context's `dataSource` bean. Therefore, `spring-security.xml` should remain in the Root context in this proposed arrangement.
+
+### Intended component scanning
+
+The following separation is intended, but is not currently claimed as an applied XML change:
+
+- In `configuration.xml`, restrict the component scan to:
+  - `com.defermentsystem.service`
+  - `com.defermentsystem.repository`
+- In `mvc-dispatcher-servlet.xml`, restrict the component scan to:
+  - `com.defermentsystem.controllers`
+
+### MVC annotation configuration
+
+The MVC Child context should use one annotation-driven configuration, with the validator explicitly assigned:
+
+```xml
+<mvc:annotation-driven validator="validator" />
 ```
+
+A `LocalValidatorFactoryBean` should be defined in the MVC Child context:
+
+```xml
+<bean id="validator"
+      class="org.springframework.validation.beanvalidation.LocalValidatorFactoryBean" />
+```
+
+The duplicate plain `<mvc:annotation-driven/>` declaration should not be retained alongside the validator-enabled declaration. This describes the intended XML configuration only; the XML files have not been edited as part of this documentation update.
+
+### Dependency-injection lifecycle
+
+The contexts work together in this order:
+
+1. The Root context creates the `DataSource`.
+2. The Root context creates repository/DAO beans and injects the `DataSource`.
+3. The Root context creates service beans and injects their repository dependencies.
+4. The `DispatcherServlet` creates the MVC Child context.
+5. The Child context creates controllers.
+6. Controllers inject and use service beans from the Parent context.
+
+`@Autowired` is used for Spring-managed bean dependencies such as repository-to-service or service-to-repository relationships and controller-to-service relationships. Ordinary method parameters, including controller request parameters, do not need `@Autowired`.
 
 ### Packages
 
@@ -107,6 +225,14 @@ Spring Security reads from `users` and `user_roles` via the JDBC user-service co
 ---
 
 ## Configuration
+
+### Spring application-context configuration
+
+The intended separation and responsibilities are described in [Architecture](#architecture). In summary:
+
+- `configuration.xml` belongs to the Root context and defines infrastructure and root-level service/repository scanning.
+- `spring-security.xml` belongs to the Root context so `springSecurityFilterChain` and JDBC authentication can use the Root `dataSource`.
+- `mvc-dispatcher-servlet.xml` belongs to the MVC Child context and defines controllers, MVC validation, view resolution, Tiles, multipart handling, and static resources.
 
 ### Local (MySQL)
 
