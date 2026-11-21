@@ -106,6 +106,8 @@ The MVC flow resolves the returned `ModelAndView` through Apache Tiles and ultim
 | `spring-security.xml` | Root context security configuration and JDBC authentication |
 | `mvc-dispatcher-servlet.xml` | MVC Child context, controller scanning, annotation handling, validation, view resolution, Tiles and multipart configuration |
 
+![Proposed Spring application-context configuration](./proposed-config-change.jpeg)
+
 In `web.xml`, `ContextLoaderListener` loads the Root context. The `DispatcherServlet` is named `mvc-dispatcher`, so it automatically looks for `/WEB-INF/mvc-dispatcher-servlet.xml` as its MVC Child context.
 
 The current `web.xml` contains a `contextConfigLocation` entry that lists `mvc-dispatcher-servlet.xml`, `configuration.xml`, and `spring-security.xml`. That configuration currently makes all three files available to the context loaded by `ContextLoaderListener`; it is not the final intended separation described above. Under the proposed arrangement, the Root files would be `configuration.xml` and `spring-security.xml`, while `mvc-dispatcher-servlet.xml` would remain the automatically loaded Child context file. These XML changes are documentation of the intended configuration only and have not been applied.
