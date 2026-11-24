@@ -23,7 +23,8 @@ target/
 *.iml
 
 # VS Code
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 
 # ==================================================
 # 3. Operating system files
@@ -38,6 +39,8 @@ desktop.ini
 # ==================================================
 
 *.log
+*.temp
+*.swp
 logs/
 tmp/
 temp/
