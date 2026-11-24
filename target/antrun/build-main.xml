@@ -1,6 +1,0 @@
-<?xml version="1.0" encoding="UTF-8" ?>
-<project name="maven-antrun-" default="main"  >
-<target name="main">
-  <unzip src="C:\Users\pio_o\OneDrive\Documents\updates-to-projects\Deferment\target/SpringWebProject.war" dest="C:\Users\pio_o\OneDrive\Documents\updates-to-projects\Deferment\target/SpringWebProject" overwrite="true"/>
-</target>
-</project>

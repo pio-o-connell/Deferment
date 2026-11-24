@@ -1,5 +1,0 @@
-<%@ include file="/WEB-INF/jsp/include.jsp"%>
-
-
-
-<h2 class="ui-field-contain">${message}</h2>
