@@ -28,7 +28,7 @@ import com.defermentsystem.repository.DeferralDAO;
 import com.defermentsystem.repository.StudentDAO;
 
 @RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration({ "classpath:configuration.xml" })
+@ContextConfiguration({ "classpath:repository-context.xml" })
 @TestExecutionListeners({ DependencyInjectionTestExecutionListener.class,
 		DbUnitTestExecutionListener.class })
 

@@ -32,7 +32,7 @@ import com.defermentsystem.repository.DeferralDAO;
 // TODO: Auto-generated Javadoc
 
 @RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration({ "classpath:configuration.xml" })
+@ContextConfiguration({ "classpath:repository-context.xml" })
 @TestExecutionListeners({ DependencyInjectionTestExecutionListener.class,
 		DbUnitTestExecutionListener.class })
 public class DeferralTest {

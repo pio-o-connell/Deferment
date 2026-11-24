@@ -11,7 +11,7 @@ public class App {
 	
 	 public static void main(String[] args){
 	    	
-	    	appContext = new ClassPathXmlApplicationContext("configuration.xml");
+		appContext = new ClassPathXmlApplicationContext("repository-context.xml");
 	    	
 	    	ProgrammeJdbcDaoSupport pds = (ProgrammeJdbcDaoSupport)appContext.getBean("programmeJdbcDaoSupport");
 	    	pds.createProgramme("KCMSD_Y5", 5, "L001", "Jan");

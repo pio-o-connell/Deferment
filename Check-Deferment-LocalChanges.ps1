@@ -49,7 +49,8 @@ Write-Host "`n[6] Full unstaged diff" -ForegroundColor Yellow
 git diff --no-ext-diff -- `
     WEB-INF/web.xml `
     src/main/webapp/WEB-INF/web.xml `
-    src/main/webapp/WEB-INF/configuration.xml `
+    src/main/webapp/WEB-INF/root-context.xml `
+    src/main/resources/repository-context.xml `
     src/main/webapp/WEB-INF/mvc-dispatcher-servlet.xml `
     src/main/webapp/WEB-INF/spring-security.xml `
     .gitignore
@@ -58,7 +59,8 @@ Write-Host "`n[7] Full staged diff" -ForegroundColor Yellow
 git diff --cached --no-ext-diff -- `
     WEB-INF/web.xml `
     src/main/webapp/WEB-INF/web.xml `
-    src/main/webapp/WEB-INF/configuration.xml `
+    src/main/webapp/WEB-INF/root-context.xml `
+    src/main/resources/repository-context.xml `
     src/main/webapp/WEB-INF/mvc-dispatcher-servlet.xml `
     src/main/webapp/WEB-INF/spring-security.xml `
     .gitignore
@@ -67,7 +69,8 @@ git diff --cached --no-ext-diff -- `
 Write-Host "`n[8] Configuration file presence" -ForegroundColor Yellow
 $files = @(
     "src/main/webapp/WEB-INF/web.xml",
-    "src/main/webapp/WEB-INF/configuration.xml",
+    "src/main/webapp/WEB-INF/root-context.xml",
+    "src/main/resources/repository-context.xml",
     "src/main/webapp/WEB-INF/mvc-dispatcher-servlet.xml",
     "src/main/webapp/WEB-INF/spring-security.xml",
     ".gitignore"
@@ -87,7 +90,8 @@ foreach ($file in $files) {
 Write-Host "`n[9] Local configuration contents" -ForegroundColor Yellow
 $configFiles = @(
     "src/main/webapp/WEB-INF/web.xml",
-    "src/main/webapp/WEB-INF/configuration.xml",
+    "src/main/webapp/WEB-INF/root-context.xml",
+    "src/main/resources/repository-context.xml",
     "src/main/webapp/WEB-INF/mvc-dispatcher-servlet.xml",
     "src/main/webapp/WEB-INF/spring-security.xml"
 )

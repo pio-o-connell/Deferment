@@ -24,17 +24,18 @@ The application uses two Spring `WebApplicationContext` instances: a shared Root
 
 ### Root WebApplicationContext
 
-The Root context is the shared application infrastructure. It is configured by `configuration.xml` and `spring-security.xml` and should contain:
+The Root context is the shared application infrastructure. It is configured by `root-context.xml` and `spring-security.xml` and contains:
 
 - The `DataSource`
 - The transaction manager
 - `TransactionTemplate`
 - `JavaMailSender`
+- The `Mail` component
 - Repository/DAO beans
 - Service beans
 - Spring Security configuration
 
-The Root context should scan only `com.defermentsystem.service` and `com.defermentsystem.repository`. It should not scan all application packages or depend on MVC controllers.
+The Root context scans only `com.defermentsystem.service` and `com.defermentsystem.repository`. It does not scan all application packages or depend on MVC controllers.
 
 ### MVC Child WebApplicationContext
 
@@ -102,47 +103,47 @@ The MVC flow resolves the returned `ModelAndView` through Apache Tiles and ultim
 
 | File | Responsibility |
 |---|---|
-| `configuration.xml` | Root context infrastructure, component scanning for services and repositories, DataSource and transaction configuration |
+| `root-context.xml` | Root context infrastructure, service/repository scanning, DataSource, transaction configuration and Mail |
 | `spring-security.xml` | Root context security configuration and JDBC authentication |
 | `mvc-dispatcher-servlet.xml` | MVC Child context, controller scanning, annotation handling, validation, view resolution, Tiles and multipart configuration |
+| `repository-context.xml` | Classpath configuration for repository tests and the `App` command-line entry point |
 
-![Proposed Spring application-context configuration](./proposed-config-change.jpeg)
-![Diagnostic results ](./diagnostic-results.png)
+![Spring application-context configuration](./proposed-config-change.jpeg)
+![Pre-refactor diagnostic results](./diagnostic-results.png)
 
 In `web.xml`, `ContextLoaderListener` loads the Root context. The `DispatcherServlet` is named `mvc-dispatcher`, so it automatically looks for `/WEB-INF/mvc-dispatcher-servlet.xml` as its MVC Child context.
 
-The current `web.xml` contains a `contextConfigLocation` entry that lists `mvc-dispatcher-servlet.xml`, `configuration.xml`, and `spring-security.xml`. That configuration currently makes all three files available to the context loaded by `ContextLoaderListener`; it is not the final intended separation described above. Under the proposed arrangement, the Root files would be `configuration.xml` and `spring-security.xml`, while `mvc-dispatcher-servlet.xml` would remain the automatically loaded Child context file. These XML changes are documentation of the intended configuration only and have not been applied.
+`web.xml` loads `/WEB-INF/root-context.xml` and `/WEB-INF/spring-security.xml` into the Root context. The MVC file is loaded only by the `mvc-dispatcher` Child context, keeping controllers and MVC infrastructure out of the Root.
 
 ### Why Spring Security remains in the Root context
 
-`DelegatingFilterProxy` looks up the `springSecurityFilterChain` bean in the Root `WebApplicationContext` by default. The JDBC authentication configuration also requires access to the Root context's `dataSource` bean. Therefore, `spring-security.xml` should remain in the Root context in this proposed arrangement.
+`DelegatingFilterProxy` looks up the `springSecurityFilterChain` bean in the Root `WebApplicationContext` by default. The JDBC authentication configuration also requires access to the Root context's `dataSource` bean. Therefore, `spring-security.xml` remains in the Root context.
 
-### Intended component scanning
+### Component scanning
 
-The following separation is intended, but is not currently claimed as an applied XML change:
-
-- In `configuration.xml`, restrict the component scan to:
+- `root-context.xml` scans only:
   - `com.defermentsystem.service`
   - `com.defermentsystem.repository`
-- In `mvc-dispatcher-servlet.xml`, restrict the component scan to:
+- `root-context.xml` explicitly registers the `com.defermentsystem.domain.Mail` bean.
+- `mvc-dispatcher-servlet.xml` scans only:
   - `com.defermentsystem.controllers`
 
 ### MVC annotation configuration
 
-The MVC Child context should use one annotation-driven configuration, with the validator explicitly assigned:
+The MVC Child context uses one annotation-driven configuration, with the validator explicitly assigned:
 
 ```xml
 <mvc:annotation-driven validator="validator" />
 ```
 
-A `LocalValidatorFactoryBean` should be defined in the MVC Child context:
+A `LocalValidatorFactoryBean` is defined in the MVC Child context:
 
 ```xml
 <bean id="validator"
       class="org.springframework.validation.beanvalidation.LocalValidatorFactoryBean" />
 ```
 
-The duplicate plain `<mvc:annotation-driven/>` declaration should not be retained alongside the validator-enabled declaration. This describes the intended XML configuration only; the XML files have not been edited as part of this documentation update.
+The MVC Child context also defines a `LocalValidatorFactoryBean`. The duplicate plain `<mvc:annotation-driven/>` declaration has been removed.
 
 ### Dependency-injection lifecycle
 
@@ -231,11 +232,12 @@ Spring Security reads from `users` and `user_roles` via the JDBC user-service co
 
 ### Spring application-context configuration
 
-The intended separation and responsibilities are described in [Architecture](#architecture). In summary:
+The applied separation and responsibilities are described in [Architecture](#architecture). In summary:
 
-- `configuration.xml` belongs to the Root context and defines infrastructure and root-level service/repository scanning.
+- `root-context.xml` belongs to the Root context and defines infrastructure and root-level service/repository scanning.
 - `spring-security.xml` belongs to the Root context so `springSecurityFilterChain` and JDBC authentication can use the Root `dataSource`.
 - `mvc-dispatcher-servlet.xml` belongs to the MVC Child context and defines controllers, MVC validation, view resolution, Tiles, multipart handling, and static resources.
+- `repository-context.xml` is a separate classpath context used by repository tests and `App.java`.
 
 ### Local (MySQL)
 
@@ -272,14 +274,14 @@ Deferment/
 │   │   │   └── service/          # Service interfaces + implementations
 │   │   │
 │   │   ├── resources/
-│   │   │   ├── configuration.xml # Datasource + transaction manager (classpath)
+│   │   │   ├── repository-context.xml # Datasource + transaction manager (classpath)
 │   │   │   ├── databaseEntries.xml # DBUnit seed data
 │   │   │   └── prop.properties   # Local MySQL connection settings
 │   │   │
 │   │   └── webapp/
 │   │       └── WEB-INF/
 │   │           ├── jsp/           # JSP views grouped by entity
-│   │           ├── configuration.xml          # Datasource config (WEB-INF)
+│   │           ├── root-context.xml            # Root infrastructure and component scan
 │   │           ├── mvc-dispatcher-servlet.xml # MVC + Tiles config
 │   │           ├── spring-security.xml        # Authentication + authorisation
 │   │           └── tiles.xml                  # ~30 Tiles view definitions

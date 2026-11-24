@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import org.junit.Test;
@@ -16,7 +17,6 @@ import org.springframework.aop.framework.Advised;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.FileSystemResourceLoader;
 import org.springframework.mock.web.MockServletConfig;
@@ -30,14 +30,16 @@ import org.springframework.web.servlet.DispatcherServlet;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
 public class WebApplicationContextDiagnosticTest {
 
 	private static final String[] ROOT_CONFIG_LOCATIONS = {
-			"/WEB-INF/mvc-dispatcher-servlet.xml",
-			"/WEB-INF/configuration.xml",
+			"/WEB-INF/root-context.xml",
 			"/WEB-INF/spring-security.xml" };
 
 	private static final String[] CONTROLLER_BEANS = {
@@ -55,6 +57,12 @@ public class WebApplicationContextDiagnosticTest {
 			"moduleJdbcDaoSupport", "programmeJdbcDaoSupport",
 			"registrationJdbcDaoSupport", "semesterJdbcDaoSupport",
 			"studentJdbcDaoSupport" };
+
+	private static final String[] ROOT_INFRASTRUCTURE_BEANS = {
+			"dataSource", "transactionManager", "txTemplate", "mailSender", "mail" };
+
+	private static final String[] CHILD_MVC_INFRASTRUCTURE_BEANS = {
+			"validator", "tilesConfigurer", "tilesViewResolver", "multipartResolver" };
 
 	@Test
 	public void reportActualWebApplicationContexts() {
@@ -90,6 +98,22 @@ public class WebApplicationContextDiagnosticTest {
 			assertSame("The DispatcherServlet context must inherit the root context",
 					rootContext, childContext.getParent());
 			System.out.println("CHILD context started: " + childContext.getId());
+
+			assertLocallyRegistered(rootContext, "ROOT", SERVICE_BEANS);
+			assertLocallyRegistered(rootContext, "ROOT", REPOSITORY_BEANS);
+			assertLocallyRegistered(rootContext, "ROOT", ROOT_INFRASTRUCTURE_BEANS);
+			assertLocallyRegistered(childContext, "CHILD", CONTROLLER_BEANS);
+			assertLocallyRegistered(childContext, "CHILD", CHILD_MVC_INFRASTRUCTURE_BEANS);
+			assertNotLocallyRegistered(rootContext, "ROOT", CONTROLLER_BEANS);
+			assertNotLocallyRegistered(childContext, "CHILD", SERVICE_BEANS);
+			assertNotLocallyRegistered(childContext, "CHILD", REPOSITORY_BEANS);
+			assertNotLocallyRegistered(childContext, "CHILD", ROOT_INFRASTRUCTURE_BEANS);
+			assertTrue("Mail must be locally registered in Root",
+					rootContext.getBeanFactory().containsBeanDefinition("mail"));
+			assertFalse("Mail must not be locally registered in Child",
+					childContext.getBeanFactory().containsBeanDefinition("mail"));
+			assertSame("Child must inherit the Root Mail bean",
+					rootContext.getBean("mail"), childContext.getBean("mail"));
 
 			reportBeanInventory("ROOT", rootContext, childContext);
 			reportBeanInventory("CHILD", childContext, rootContext);
@@ -139,6 +163,26 @@ public class WebApplicationContextDiagnosticTest {
 		}
 	}
 
+	private void assertLocallyRegistered(
+			ConfigurableApplicationContext context,
+			String contextName,
+			String[] beanNames) {
+		for (String beanName : beanNames) {
+			assertTrue(contextName + " must locally register " + beanName,
+					context.getBeanFactory().containsBeanDefinition(beanName));
+		}
+	}
+
+	private void assertNotLocallyRegistered(
+			ConfigurableApplicationContext context,
+			String contextName,
+			String[] beanNames) {
+		for (String beanName : beanNames) {
+			assertFalse(contextName + " must not locally register " + beanName,
+					context.getBeanFactory().containsBeanDefinition(beanName));
+		}
+	}
+
 	private void reportBeanInventory(String contextName,
 			ConfigurableApplicationContext context,
 			ConfigurableApplicationContext otherContext) {
@@ -147,6 +191,7 @@ public class WebApplicationContextDiagnosticTest {
 		System.out.println("Local bean definitions only; inherited beans are excluded.");
 
 		String[] beanNames = context.getBeanFactory().getBeanDefinitionNames();
+		System.out.println("Local bean definition count: " + beanNames.length);
 		Arrays.sort(beanNames);
 		for (String beanName : beanNames) {
 			Object bean = getBean(context, beanName, contextName);
@@ -183,7 +228,45 @@ public class WebApplicationContextDiagnosticTest {
 				duplicateCount++;
 			}
 		}
-		System.out.println("Application component duplicates: " + duplicateCount);
+
+		Map<String, Set<String>> rootImplementations =
+				localApplicationImplementations(rootContext, "ROOT");
+		Map<String, Set<String>> childImplementations =
+				localApplicationImplementations(childContext, "CHILD");
+		Set<String> duplicateClasses = new TreeSet<String>(rootImplementations.keySet());
+		duplicateClasses.retainAll(childImplementations.keySet());
+
+		for (String className : duplicateClasses) {
+			System.out.printf("Same implementation class in both contexts: %s"
+							+ " | ROOT beans=%s | CHILD beans=%s%n",
+					className, rootImplementations.get(className),
+					childImplementations.get(className));
+		}
+		System.out.println("Application component duplicate bean names: " + duplicateCount);
+		System.out.println("Application implementation classes registered in both: "
+				+ duplicateClasses.size());
+		assertTrue("Application implementation classes must not be registered in both contexts: "
+				+ duplicateClasses, duplicateClasses.isEmpty());
+	}
+
+	private Map<String, Set<String>> localApplicationImplementations(
+			ConfigurableApplicationContext context,
+			String contextName) {
+		Map<String, Set<String>> implementations =
+				new TreeMap<String, Set<String>>();
+		for (String beanName : context.getBeanFactory().getBeanDefinitionNames()) {
+			Object bean = getBean(context, beanName, contextName);
+			String className = AopUtils.getTargetClass(bean).getName();
+			if (className.startsWith("com.defermentsystem.")) {
+				Set<String> beanNames = implementations.get(className);
+				if (beanNames == null) {
+					beanNames = new TreeSet<String>();
+					implementations.put(className, beanNames);
+				}
+				beanNames.add(beanName);
+			}
+		}
+		return implementations;
 	}
 
 	private void reportInjections(String section, String[] beanNames,
@@ -261,8 +344,11 @@ public class WebApplicationContextDiagnosticTest {
 			String[] repositoryBeanNames, ConfigurableApplicationContext context) {
 		for (String beanName : repositoryBeanNames) {
 			if (!context.getBeanFactory().containsBeanDefinition(beanName)) {
-				System.out.printf("[%s] %s | not locally registered%n",
-						contextName, beanName);
+				System.out.printf("[%s] %s | not locally registered"
+								+ " | transactionManager local=%s | available=%s%n",
+						contextName, beanName,
+						context.containsLocalBean("transactionManager"),
+						context.containsBean("transactionManager"));
 				continue;
 			}
 
@@ -282,6 +368,36 @@ public class WebApplicationContextDiagnosticTest {
 			ConfigurableApplicationContext childContext) {
 		System.out.println();
 		System.out.println("========== SPRING MVC HANDLER MAPPINGS ==========");
+
+		String[] rootMappingBeanNames = rootContext.getBeanFactory()
+				.getBeanNamesForType(RequestMappingHandlerMapping.class, true, false);
+		String[] childMappingBeanNames = childContext.getBeanFactory()
+				.getBeanNamesForType(RequestMappingHandlerMapping.class, true, false);
+		assertEquals("Root context must not register MVC handler mappings",
+				0, rootMappingBeanNames.length);
+		assertTrue("Child context must register MVC handler mappings",
+				childMappingBeanNames.length > 0);
+
+		Set<String> registeredControllers = new TreeSet<String>();
+		for (String mappingBeanName : childMappingBeanNames) {
+			RequestMappingHandlerMapping mapping = (RequestMappingHandlerMapping)
+					getBean(childContext, mappingBeanName, "CHILD");
+			for (HandlerMethod handlerMethod : mapping.getHandlerMethods().values()) {
+				Object handlerBean = handlerMethod.getBean();
+				String handlerBeanName = handlerBean instanceof String
+						? (String) handlerBean
+						: findLocalBeanName(childContext, handlerBean);
+				if (handlerBeanName != null
+						&& Arrays.asList(CONTROLLER_BEANS).contains(handlerBeanName)) {
+					registeredControllers.add(handlerBeanName);
+				}
+			}
+		}
+		for (String controllerBean : CONTROLLER_BEANS) {
+			assertTrue("Child handler mappings must contain " + controllerBean,
+					registeredControllers.contains(controllerBean));
+		}
+
 		Set<String> rootMappings = reportHandlerMappingsForContext("ROOT", rootContext);
 		Set<String> childMappings = reportHandlerMappingsForContext("CHILD", childContext);
 
@@ -291,6 +407,8 @@ public class WebApplicationContextDiagnosticTest {
 		for (String mapping : duplicates) {
 			System.out.println("  " + mapping);
 		}
+		assertTrue("Controller URL mappings must not be registered in both contexts",
+				duplicates.isEmpty());
 	}
 
 	private Set<String> reportHandlerMappingsForContext(String contextName,
