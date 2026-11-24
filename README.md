@@ -39,7 +39,7 @@ The Root context scans only `com.defermentsystem.service` and `com.defermentsyst
 
 ### MVC Child WebApplicationContext
 
-The Child context is created by the `DispatcherServlet` and is configured by `mvc-dispatcher-servlet.xml`. It should contain:
+The Child context is created by the `DispatcherServlet` and is configured by `mvc-dispatcher-servlet.xml`. It contains:
 
 - Spring MVC controllers
 - MVC annotation handling
@@ -49,7 +49,7 @@ The Child context is created by the `DispatcherServlet` and is configured by `mv
 - Multipart request handling
 - Static resource handling
 
-The Child context should scan only `com.defermentsystem.controllers`.
+The Child context scans only `com.defermentsystem.controllers`.
 
 ### Parent–Child bean visibility
 
@@ -108,8 +108,9 @@ The MVC flow resolves the returned `ModelAndView` through Apache Tiles and ultim
 | `mvc-dispatcher-servlet.xml` | MVC Child context, controller scanning, annotation handling, validation, view resolution, Tiles and multipart configuration |
 | `repository-context.xml` | Classpath configuration for repository tests and the `App` command-line entry point |
 
-![Spring application-context configuration](./proposed-config-change.jpeg)
-![Pre-refactor diagnostic results](./diagnostic-results.png)
+![Proposed and implemented Spring application-context separation](./proposed-config-change.jpeg)
+
+`diagnostic-results.png` is retained as a **pre-refactor baseline**. It records the original context-registration problem; it is not evidence of the current post-refactor result. The current configuration is checked by `WebApplicationContextDiagnosticTest` (see [Testing](#testing)).
 
 In `web.xml`, `ContextLoaderListener` loads the Root context. The `DispatcherServlet` is named `mvc-dispatcher`, so it automatically looks for `/WEB-INF/mvc-dispatcher-servlet.xml` as its MVC Child context.
 
@@ -143,7 +144,7 @@ A `LocalValidatorFactoryBean` is defined in the MVC Child context:
       class="org.springframework.validation.beanvalidation.LocalValidatorFactoryBean" />
 ```
 
-The MVC Child context also defines a `LocalValidatorFactoryBean`. The duplicate plain `<mvc:annotation-driven/>` declaration has been removed.
+The duplicate plain `<mvc:annotation-driven/>` declaration has been removed; the validator is configured once through the explicit validator attribute.
 
 ### Dependency-injection lifecycle
 
@@ -241,18 +242,18 @@ The applied separation and responsibilities are described in [Architecture](#arc
 
 ### Local (MySQL)
 
-Edit `src/main/resources/prop.properties`:
+Create the ignored `src/main/resources/prop.properties` file:
 
 ```properties
-db.driver=com.mysql.jdbc.Driver
-db.url=jdbc:mysql://localhost:3307/spring_project
-db.username=root
-db.password=yourpassword
+jdbc.driverClassName=com.mysql.jdbc.Driver
+jdbc.url=jdbc:mysql://localhost:3307/spring_project
+jdbc.username=root
+jdbc.password=yourpassword
 ```
 
 ### Heroku (PostgreSQL)
 
-`HerokuDataSourceFactory` reads the `DATABASE_URL` environment variable (Heroku's standard `postgres://user:pass@host:port/db` format) and constructs a PostgreSQL JDBC URL at startup. No code change is needed — if `DATABASE_URL` is present, it takes precedence.
+`HerokuDataSourceFactory` uses the `DATABASE_URL` environment variable (Heroku's standard `postgres://user:pass@host:port/db` format) to construct a PostgreSQL JDBC URL at startup. Set `DATABASE_URL` in the Heroku app's config vars; a local `prop.properties` file is not required on Heroku. If both are present, `DATABASE_URL` takes precedence.
 
 ---
 
@@ -325,6 +326,20 @@ Or deploy `target/SpringWebProject.war` to any Servlet 3.1-compatible container 
 ## Testing
 
 The test suite uses JUnit 4, DBUnit with an HSQLDB in-memory database for DAO tests, and Selenium for browser-based UI tests. A sample DAO test is at `src/test/java/com/defermentsystem/repository/DeferralJdbcDaoSupportTest.java`.
+
+### Spring WebApplicationContext diagnostic
+
+`src/test/java/com/defermentsystem/context/WebApplicationContextDiagnosticTest.java` creates the Root context using the same two XML locations listed in `web.xml`, then initializes a `DispatcherServlet` named `mvc-dispatcher` so Spring loads its conventional MVC Child configuration.
+
+The diagnostic checks the Root/Child parent relationship and local bean registration, verifies that service and repository implementations are not duplicated across the contexts, checks that controllers and MVC handler mappings belong to the Child, and inspects dependency injection and repository transaction proxies. It also prints bean inventories and handler mappings to the test output.
+
+Run this diagnostic independently with:
+
+```bash
+mvn -Dtest=WebApplicationContextDiagnosticTest test
+```
+
+A successful run means the diagnostic's assertions passed for the configuration loaded by that test. It is separate from the Selenium browser tests and does not, by itself, establish that the complete web application has passed end-to-end testing.
 
 ---
 

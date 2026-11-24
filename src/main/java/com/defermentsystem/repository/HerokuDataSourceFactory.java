@@ -8,11 +8,24 @@ import javax.annotation.PostConstruct;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 public class HerokuDataSourceFactory extends DriverManagerDataSource {
-    
+
+    private final String databaseUrl;
+    private final String localDriver;
+    private final String localUrl;
+    private final String localUsername;
+    private final String localPassword;
+
+    public HerokuDataSourceFactory(String databaseUrl, String localDriver, String localUrl,
+            String localUsername, String localPassword) {
+        this.databaseUrl = databaseUrl;
+        this.localDriver = localDriver;
+        this.localUrl = localUrl;
+        this.localUsername = localUsername;
+        this.localPassword = localPassword;
+    }
+
     @PostConstruct
     public void init() {
-        String databaseUrl = System.getenv("DATABASE_URL");
-        
         if (databaseUrl != null && !databaseUrl.isEmpty()) {
             // Parse Heroku DATABASE_URL format: postgres://user:password@host:port/database
             try {
@@ -30,8 +43,16 @@ public class HerokuDataSourceFactory extends DriverManagerDataSource {
             } catch (URISyntaxException e) {
                 throw new RuntimeException("Error parsing DATABASE_URL", e);
             }
+        } else {
+            if (localDriver.isEmpty() || localUrl.isEmpty()) {
+                throw new IllegalStateException(
+                        "Set DATABASE_URL or provide jdbc.driverClassName and jdbc.url in prop.properties");
+            }
+            setDriverClassName(localDriver);
+            setUrl(localUrl);
+            setUsername(localUsername);
+            setPassword(localPassword);
         }
-        // If DATABASE_URL is not set, use the properties set by Spring from prop.properties
     }
 }
 
