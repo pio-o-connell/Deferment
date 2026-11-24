@@ -107,6 +107,7 @@ The MVC flow resolves the returned `ModelAndView` through Apache Tiles and ultim
 | `mvc-dispatcher-servlet.xml` | MVC Child context, controller scanning, annotation handling, validation, view resolution, Tiles and multipart configuration |
 
 ![Proposed Spring application-context configuration](./proposed-config-change.jpeg)
+![Diagnostic results ](./diagnostic-results.png)
 
 In `web.xml`, `ContextLoaderListener` loads the Root context. The `DispatcherServlet` is named `mvc-dispatcher`, so it automatically looks for `/WEB-INF/mvc-dispatcher-servlet.xml` as its MVC Child context.
 
