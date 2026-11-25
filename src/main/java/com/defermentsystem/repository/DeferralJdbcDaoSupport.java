@@ -42,7 +42,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createModuleDeferral(String studentId, String moduleId,
 			int crnNumber) {
 
@@ -78,7 +78,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createProgrammeDeferral(final String studentId, final String programmeId) {
 
 		/*
@@ -146,13 +146,13 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
-	public void approveModuleDeferral(String studId, String moduleId) {
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
+	public int approveModuleDeferral(String studId, String moduleId) {
 		
 		// Update approval
-		String SQL = "UPDATE deferrals SET Approved=True"
-				+ " WHERE Student_ID=? AND Module_ID=?";
-		getJdbcTemplate().update(SQL, new Object[] { studId, moduleId });
+		String SQL = "UPDATE deferrals SET Approved='True'"
+				+ " WHERE Student_ID=? AND Module_ID=? AND Approved='False'";
+		int updated = getJdbcTemplate().update(SQL, new Object[] { studId, moduleId });
 
 		/*
 		 * The module must correspond to a specific CRN Get this CRN
@@ -170,17 +170,17 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 				+ " WHERE Student_ID=? AND CRN=?";
 		getJdbcTemplate().update(SQL3, new Object[] { studId, crn });*/
 
-		return;
+		return updated;
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
-	public void approveProgrammeDeferral(String studId, String programmeId) {
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
+	public int approveProgrammeDeferral(String studId, String programmeId) {
 		
 		// Update approval
-		String SQL = "UPDATE deferrals SET Approved=True"
-				+ " WHERE Student_ID=? AND Programme_ID=?";
-		getJdbcTemplate().update(SQL, new Object[] { studId, programmeId });
+		String SQL = "UPDATE deferrals SET Approved='True'"
+				+ " WHERE Student_ID=? AND Programme_ID=? AND Approved='False'";
+		int updated = getJdbcTemplate().update(SQL, new Object[] { studId, programmeId });
 
 		/*
 		 * Delete the modules corresponding to the student and programme from
@@ -188,9 +188,11 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 		 */
 		String SQL2 = "DELETE FROM registration"
 				+ " WHERE Student_ID=? AND Programme_ID=?";
-		getJdbcTemplate().update(SQL2, new Object[] { studId, programmeId });
+		if (updated > 0) {
+			getJdbcTemplate().update(SQL2, new Object[] { studId, programmeId });
+		}
 
-		return;
+		return updated;
 
 	}
 
@@ -319,10 +321,17 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 		System.out.println("Updated Record with ID = " + id );
 		return;		
 	}
+
+	@Override
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
+	public int updateDeferralStatusIfPending(int id, String approval, String lectId) {
+		String SQL = "update deferrals set Approved=? where Def_ID=? and Lect_ID=? and Approved='False'";
+		return getJdbcTemplate().update(SQL, new Object[] {approval, id, lectId});
+	}
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public int createModuleDeferralGetId(String studentId, String moduleId,
 			int crnNumber) {
 
@@ -380,7 +389,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public ArrayList<Integer> createProgrammeDeferralGetId(final String studentId, final String programmeId) {
 
 		// Create an ArrayList to store all the generated Id's

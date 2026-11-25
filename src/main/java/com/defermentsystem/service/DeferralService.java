@@ -115,6 +115,11 @@ public interface DeferralService {
 	 * a record into the deferral table.
 	 */
 	public void updateDeferral(int id, String approval);
+
+	/**
+	 * Approve or reject a pending deferral with an authorised lecturer guard.
+	 */
+	public void decideDeferral(int id, String lecturerId, String decision);
 	
 	/**
 	 * This is the method to be used to create a Module Deferral and return the id generated

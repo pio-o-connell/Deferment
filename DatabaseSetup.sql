@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS `deferrals` (
   `Lect_ID` varchar(10) NOT NULL,
   `Programme_ID` varchar(20) NOT NULL,
   `Module_ID` varchar(10) NOT NULL,
-  `Approved` enum('True','False') NOT NULL DEFAULT 'False'
+  `Approved` varchar(10) NOT NULL DEFAULT 'False'
 ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 AUTO_INCREMENT=782 ;
 
 

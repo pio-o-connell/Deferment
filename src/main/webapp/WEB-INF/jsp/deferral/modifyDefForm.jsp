@@ -60,6 +60,7 @@ $("#modify").click(function(){
 					<form:select path="approval" id="approval">
 						<form:option value="True"></form:option>
 						<form:option value="False"></form:option>
+						<form:option value="Rejected"></form:option>
 						<form:errors path="approval" cssClass="error"
 							class="notification error" style="display:block"></form:errors>
 					</form:select>

@@ -109,17 +109,22 @@ public interface DeferralDAO {
 	/**
 	 * This is the method used to approve a module deferral.
 	 */
-	public void approveModuleDeferral(String studId, String moduleId);
+	public int approveModuleDeferral(String studId, String moduleId);
 
 	/**
 	 * This is the method used to approve a programme deferral.
 	 */
-	public void approveProgrammeDeferral(String studId, String programmeId);
+	public int approveProgrammeDeferral(String studId, String programmeId);
 	/** 
 	 * This is the method to be used to update
 	 * a record into the deferral table.
 	 */
 	public void updateDeferral(int id, String approval);
+
+	/**
+	 * Atomically updates a pending deferral only for its authorised lecturer.
+	 */
+	public int updateDeferralStatusIfPending(int id, String approval, String lectId);
 
 	/**
 	 * This is the method used to count the rows in the table.

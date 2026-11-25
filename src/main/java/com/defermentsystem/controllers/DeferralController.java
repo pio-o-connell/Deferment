@@ -423,7 +423,13 @@ public class DeferralController {
 	
 	@RequestMapping(value="/modify/id/{id}/approval/{approval}", method = RequestMethod.GET) 
 	public String modifyDeferral(@PathVariable int id, @PathVariable String approval,  ModelMap model) {			
-		deferralService.updateDeferral(id, approval);
+		try {
+			deferralService.decideDeferral(id, null, approval);
+		} catch (Exception e) {
+			model.addAttribute("message", "Deferral decision failed: " + e.getLocalizedMessage());
+			model.addAttribute("deferrals", deferralService.listDeferrals());
+			return "displayDeferrals";
+		}
 		Deferral deferralModify=deferralService.getDeferral(id);
 		model.addAttribute("message", "Deferral with id "+ id +" has been modified");
 		model.addAttribute("id", id);
