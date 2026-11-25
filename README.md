@@ -205,7 +205,7 @@ The contexts work together in this order:
 | Embedded server | Apache Tomcat 8.5.23 |
 | File upload | Apache Commons FileUpload 1.3.1 |
 | Email | JavaMail 1.4.7 |
-| Testing | JUnit 4.11, DBUnit 2.4.9, Spring Test DBUnit 1.1.0, HSQLDB, Selenium 2.44 |
+| Testing | JUnit 4.11, DBUnit 2.4.9, Spring Test DBUnit 1.1.0, HSQLDB, Selenium 4.13.0 (headless Chrome), Log4j 1.2 |
 
 ---
 
@@ -300,8 +300,10 @@ Deferment/
 **Build the WAR:**
 
 ```bash
-mvn clean package -Dmaven.test.skip=true
+mvn clean package
 ```
+
+The default build runs the unit, DAO and configuration tests (no running app or external database needed) and skips the browser UI tests. Add `-DskipTests` to skip all tests.
 
 **Run locally (embedded Tomcat):**
 
@@ -333,7 +335,21 @@ The repository tests create their own in-memory HSQLDB tables from `src/test/res
 mvn '-Dtest=*JdbcDaoSupportTest' test
 ```
 
-The Selenium tests use a separately running application and the existing `repository-context.xml`, not this in-memory repository-test database. Their DBUnit setup can modify the database configured there; use a dedicated test database and application before running them.
+### Selenium UI tests
+
+The Selenium tests (`DeferralTest`, `LecturerTest`, `LoginTest`, `ModuleTest`, `ProgrammeTest`, `StudentSeleniumTest`) drive **headless Chrome** through the shared `HeadlessChromeDriver` helper, so no browser windows open. Chrome must be installed; Selenium Manager downloads the matching driver.
+
+They are excluded from the default `mvn package` build because they need the application running at `http://localhost:8080/SpringWebProject/` and the MySQL database from `prop.properties`. They use the existing `repository-context.xml`, not the in-memory repository-test database, and their DBUnit setup modifies that database, so use a dedicated test database. To include them:
+
+```bash
+mvn -Pui-tests clean package
+```
+
+`HeadlessChromeDriverTest` is a quick smoke test of the Chrome setup and runs in the default build. Some UI tests are known to fail (footer click interception, jQuery Mobile selects, validation-message checks).
+
+### Logging
+
+Log4j is configured in `src/main/resources/log4j.properties` (INFO to stdout) and `src/test/resources/log4j.properties` (WARN to stderr, with known-harmless DBUnit warnings suppressed). JavaMail debug output is disabled in `root-context.xml`.
 
 ### Spring WebApplicationContext diagnostic
 
