@@ -108,7 +108,7 @@ The MVC flow resolves the returned `ModelAndView` through Apache Tiles and ultim
 | `mvc-dispatcher-servlet.xml` | MVC Child context, controller scanning, annotation handling, validation, view resolution, Tiles and multipart configuration |
 | `repository-context.xml` | Classpath configuration for repository tests and the `App` command-line entry point |
 
-![Proposed and implemented Spring application-context separation](./proposed-config-change.jpeg)
+![Proposed and implemented Spring application-context separation](./defrment-sytem-image.png)
 
 `diagnostic-results.png` is retained as a **pre-refactor baseline**. It records the original context-registration problem; it is not evidence of the current post-refactor result. The current configuration is checked by `WebApplicationContextDiagnosticTest` (see [Testing](#testing)).
 
