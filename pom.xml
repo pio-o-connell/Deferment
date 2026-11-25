@@ -14,6 +14,8 @@
     <org.springframework.security.version>3.2.5.RELEASE</org.springframework.security.version>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
+    <!-- Browser tests need the app running on localhost:8080 plus a seeded MySQL DB; enable them with -Pui-tests -->
+    <ui.tests.exclude>%regex[.*mvc.(Deferral|Lecturer|Login|Module|Programme|StudentSelenium)Test.*]</ui.tests.exclude>
 </properties>
 
 <dependencyManagement>
@@ -227,12 +229,6 @@ This is the central artifact for Spring's Dependency Injection Container and is 
       <scope>test</scope>
 </dependency>
 <dependency>
-	<groupId>org.slf4j</groupId>
-	<artifactId>slf4j-log4j12</artifactId>
-	<version>1.5.8</version>
-	<scope>test</scope>
-</dependency>
-<dependency>
 	<groupId>org.hsqldb</groupId>
 	<artifactId>hsqldb</artifactId>
 	<version>2.0.0</version>
@@ -310,13 +306,13 @@ This is the central artifact for Spring's Dependency Injection Container and is 
 <dependency>
         <groupId>org.seleniumhq.selenium</groupId>
         <artifactId>selenium-java</artifactId>
-        <version>2.44.0</version>
+        <version>4.13.0</version>
     </dependency> 
 	
 <dependency>
 	<groupId>com.google.guava</groupId>
 	<artifactId>guava</artifactId>
-	<version>18.0</version>
+	<version>32.1.2-jre</version>
 </dependency>
 
 
@@ -330,6 +326,15 @@ This is the central artifact for Spring's Dependency Injection Container and is 
     <finalName>SpringWebProject</finalName>
 	<plugins>
 			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.2.5</version>
+				<configuration>
+					<excludes>
+						<exclude>${ui.tests.exclude}</exclude>
+					</excludes>
+				</configuration>
+			</plugin>			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>3.8.1</version>
@@ -384,5 +389,13 @@ This is the central artifact for Spring's Dependency Injection Container and is 
 			</plugin>
 		</plugins>
   </build>
+  <profiles>
+    <profile>
+      <id>ui-tests</id>
+      <properties>
+        <ui.tests.exclude>none</ui.tests.exclude>
+      </properties>
+    </profile>
+  </profiles>
 </project>
 

@@ -12,7 +12,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.support.ui.Select;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.ContextConfiguration;
@@ -46,7 +45,7 @@ public class StudentSeleniumTest {
 	
 	 @Before
 	  public void setUp() throws Exception {
-	    driver = new FirefoxDriver();
+	    driver = HeadlessChromeDriver.create();
 	    baseUrl = "http://localhost:8080/";
 	    driver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
 	   
@@ -440,7 +439,9 @@ public class StudentSeleniumTest {
 	 
 	 @After
 		public void tearDown() throws Exception {
-	    driver.quit();
+	    if (driver != null) {
+	      driver.quit();
+	    }
 	    String verificationErrorString = verificationErrors.toString();
 	    if (!"".equals(verificationErrorString)) {
 	      fail(verificationErrorString);

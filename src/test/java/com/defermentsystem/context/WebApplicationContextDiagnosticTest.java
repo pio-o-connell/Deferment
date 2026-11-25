@@ -2,6 +2,7 @@ package com.defermentsystem.context;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -13,15 +14,20 @@ import java.util.TreeSet;
 
 import org.junit.Test;
 import org.springframework.aop.TargetSource;
+import org.springframework.aop.Advisor;
+import org.springframework.aop.PointcutAdvisor;
 import org.springframework.aop.framework.Advised;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.io.FileSystemResourceLoader;
+import org.springframework.jdbc.core.support.JdbcDaoSupport;
 import org.springframework.mock.web.MockServletConfig;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
 import org.springframework.web.context.ConfigurableWebApplicationContext;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.context.support.XmlWebApplicationContext;
@@ -98,7 +104,10 @@ public class WebApplicationContextDiagnosticTest {
 			assertSame("The DispatcherServlet context must inherit the root context",
 					rootContext, childContext.getParent());
 			System.out.println("CHILD context started: " + childContext.getId());
+			System.out.println("Child parent is Root: PASS");
 
+			initializationStage = "bean registration and context separation";
+			reportContextSeparation(rootContext, childContext);
 			assertLocallyRegistered(rootContext, "ROOT", SERVICE_BEANS);
 			assertLocallyRegistered(rootContext, "ROOT", REPOSITORY_BEANS);
 			assertLocallyRegistered(rootContext, "ROOT", ROOT_INFRASTRUCTURE_BEANS);
@@ -108,6 +117,7 @@ public class WebApplicationContextDiagnosticTest {
 			assertNotLocallyRegistered(childContext, "CHILD", SERVICE_BEANS);
 			assertNotLocallyRegistered(childContext, "CHILD", REPOSITORY_BEANS);
 			assertNotLocallyRegistered(childContext, "CHILD", ROOT_INFRASTRUCTURE_BEANS);
+			assertNotLocallyRegistered(rootContext, "ROOT", CHILD_MVC_INFRASTRUCTURE_BEANS);
 			assertTrue("Mail must be locally registered in Root",
 					rootContext.getBeanFactory().containsBeanDefinition("mail"));
 			assertFalse("Mail must not be locally registered in Child",
@@ -115,6 +125,21 @@ public class WebApplicationContextDiagnosticTest {
 			assertSame("Child must inherit the Root Mail bean",
 					rootContext.getBean("mail"), childContext.getBean("mail"));
 
+			for (String beanName : ROOT_INFRASTRUCTURE_BEANS) {
+				assertSame("Child must inherit Root bean " + beanName,
+						rootContext.getBean(beanName), childContext.getBean(beanName));
+			}
+			for (String beanName : SERVICE_BEANS) {
+				assertSame("Child must inherit Root service " + beanName,
+						rootContext.getBean(beanName), childContext.getBean(beanName));
+			}
+			for (String beanName : REPOSITORY_BEANS) {
+				assertSame("Child must inherit Root repository " + beanName,
+						rootContext.getBean(beanName), childContext.getBean(beanName));
+			}
+			System.out.println("Root infrastructure, services and repositories inherited by Child: PASS");
+
+			initializationStage = "bean inventory and dependency injection";
 			reportBeanInventory("ROOT", rootContext, childContext);
 			reportBeanInventory("CHILD", childContext, rootContext);
 			reportDuplicateComponents(rootContext, childContext);
@@ -122,8 +147,13 @@ public class WebApplicationContextDiagnosticTest {
 					SERVICE_BEANS, rootContext, childContext);
 			reportInjections("CONTROLLER DEPENDENCY INJECTION",
 					CONTROLLER_BEANS, rootContext, childContext);
+			System.out.println("Required autowired fields: PASS");
+			initializationStage = "repository datasource and transaction advice";
 			reportRepositoryTransactionProxies(rootContext, childContext);
+			initializationStage = "MVC handler mappings";
 			reportHandlerMappings(rootContext, childContext);
+			System.out.println("MVC handler mappings: PASS");
+			System.out.println("RUNTIME CONTEXT DIAGNOSTIC: PASS");
 		} catch (Exception exception) {
 			System.err.println("FAILED while initializing or inspecting "
 					+ initializationStage + ": " + exception);
@@ -154,6 +184,46 @@ public class WebApplicationContextDiagnosticTest {
 				}
 			}
 		}
+	}
+
+	private void reportContextSeparation(ConfigurableApplicationContext root,
+			ConfigurableApplicationContext child) {
+		System.out.println("\n========== CONTEXT SEPARATION ==========");
+		Set<String> rootServices = localPackageBeans(root, "com.defermentsystem.service.");
+		Set<String> rootRepositories = localPackageBeans(root, "com.defermentsystem.repository.");
+		rootRepositories.remove("dataSource");
+		Set<String> childControllers = localPackageBeans(child, "com.defermentsystem.controllers.");
+		Set<String> rootControllers = localPackageBeans(root, "com.defermentsystem.controllers.");
+		Set<String> childServices = localPackageBeans(child, "com.defermentsystem.service.");
+		Set<String> childRepositories = localPackageBeans(child, "com.defermentsystem.repository.");
+		reportCategory("Root services", rootServices, new TreeSet<String>(Arrays.asList(SERVICE_BEANS)));
+		reportCategory("Root repositories", rootRepositories, new TreeSet<String>(Arrays.asList(REPOSITORY_BEANS)));
+		reportCategory("Child controllers", childControllers, new TreeSet<String>(Arrays.asList(CONTROLLER_BEANS)));
+		reportCategory("Controllers in Root", rootControllers, Collections.<String>emptySet());
+		reportCategory("Services in Child", childServices, Collections.<String>emptySet());
+		reportCategory("Repositories in Child", childRepositories, Collections.<String>emptySet());
+		assertEquals("Root service registrations", new TreeSet<String>(Arrays.asList(SERVICE_BEANS)), rootServices);
+		assertEquals("Root repository registrations", new TreeSet<String>(Arrays.asList(REPOSITORY_BEANS)), rootRepositories);
+		assertEquals("Child controller registrations", new TreeSet<String>(Arrays.asList(CONTROLLER_BEANS)), childControllers);
+		assertTrue("Controllers must not be local to Root: " + rootControllers, rootControllers.isEmpty());
+		assertTrue("Services must not be local to Child: " + childServices, childServices.isEmpty());
+		assertTrue("Repositories must not be local to Child: " + childRepositories, childRepositories.isEmpty());
+	}
+
+	private Set<String> localPackageBeans(ConfigurableApplicationContext context, String prefix) {
+		Set<String> names = new TreeSet<String>();
+		for (String name : context.getBeanFactory().getBeanDefinitionNames()) {
+			Class<?> type = AopUtils.getTargetClass(getBean(context, name, context.getId()));
+			if (type.getName().startsWith(prefix)) {
+				names.add(name);
+			}
+		}
+		return names;
+	}
+
+	private void reportCategory(String label, Set<String> actual, Set<String> expected) {
+		System.out.printf("%s: %d / %d %s | actual=%s%n",
+				label, actual.size(), expected.size(), actual.equals(expected) ? "PASS" : "FAIL", actual);
 	}
 
 	private void assertNotSameContext(WebApplicationContext rootContext,
@@ -294,13 +364,13 @@ public class WebApplicationContextDiagnosticTest {
 			Object bean = getBean(context, beanName, contextName);
 			Class<?> targetClass = AopUtils.getTargetClass(bean);
 			Object target = unwrapProxy(bean, contextName, beanName);
-			List<Field> autowiredFields = findAutowiredFields(target.getClass());
+			List<Field> autowiredFields = findDependencyFields(target.getClass());
 
 			System.out.printf("[%s] %s | implementation=%s | AOP proxy=%s%n",
 					contextName, beanName, targetClass.getName(),
 					AopUtils.isAopProxy(bean));
 			if (autowiredFields.isEmpty()) {
-				System.out.println("  (no @Autowired fields)");
+				System.out.println("  (no dependency fields)");
 			}
 
 			for (Field field : autowiredFields) {
@@ -309,10 +379,20 @@ public class WebApplicationContextDiagnosticTest {
 					if (dependency == null) {
 						System.out.printf("  %s : %s | injected=null%n",
 								field.getName(), field.getType().getName());
+						Autowired annotation = field.getAnnotation(Autowired.class);
+						assertTrue(contextName + "." + beanName + "." + field.getName()
+								+ " is a required dependency but was not injected",
+								annotation != null && !annotation.required());
 						continue;
 					}
 
 					Class<?> dependencyTargetClass = AopUtils.getTargetClass(dependency);
+					if (isApplicationDependency(field.getType())) {
+						String owner = findOwningContext(dependency, rootContext, childContext);
+						assertTrue(contextName + "." + beanName + "." + field.getName()
+								+ " must reference a Root bean; actual owner=" + owner,
+								owner.startsWith("ROOT:"));
+					}
 					System.out.printf("  %s : %s | actual=%s | AOP proxy=%s"
 									+ " | target=%s | owner=%s%n",
 							field.getName(), field.getType().getName(),
@@ -353,6 +433,42 @@ public class WebApplicationContextDiagnosticTest {
 			}
 
 			Object repository = getBean(context, beanName, contextName);
+			Object target = unwrapProxy(repository, contextName, beanName);
+			assertTrue(contextName + "." + beanName + " must extend JdbcDaoSupport",
+					target instanceof JdbcDaoSupport);
+			assertSame(contextName + "." + beanName + " must use the Root dataSource",
+					context.getBean("dataSource"), ((JdbcDaoSupport) target).getDataSource());
+			AnnotationTransactionAttributeSource annotations = new AnnotationTransactionAttributeSource();
+			boolean transactional = false;
+			for (Method method : AopUtils.getTargetClass(repository).getMethods()) {
+				if (annotations.getTransactionAttribute(method, AopUtils.getTargetClass(repository)) != null) {
+					transactional = true;
+					assertTrue(beanName + "." + method.getName() + " requires a transaction proxy",
+							repository instanceof Advised);
+					boolean advised = false;
+					for (Advisor advisor : ((Advised) repository).getAdvisors()) {
+						if (advisor.getAdvice() instanceof TransactionInterceptor
+								&& advisor instanceof PointcutAdvisor
+								&& ((PointcutAdvisor) advisor).getPointcut().getMethodMatcher()
+										.matches(method, AopUtils.getTargetClass(repository))) {
+							TransactionInterceptor interceptor = (TransactionInterceptor) advisor.getAdvice();
+							Object manager = ReflectionTestUtils.invokeMethod(interceptor,
+									"determineTransactionManager",
+									annotations.getTransactionAttribute(method, AopUtils.getTargetClass(repository)));
+							assertSame(beanName + " must use the Root transactionManager",
+									context.getBean("transactionManager"), manager);
+							advised = true;
+						}
+					}
+					assertTrue(beanName + "." + method.getName() + " has no transaction advice", advised);
+				}
+			}
+			if (!transactional) {
+				assertEquals(beanName + " must have transaction advice for its transactional methods",
+						"semesterJdbcDaoSupport", beanName);
+				System.out.printf("WARNING: %s has no @Transactional methods; no transaction proxy is required.%n",
+						beanName);
+			}
 			System.out.printf("[%s] %s | target=%s | AOP proxy=%s"
 							+ " | transactionManager local=%s | available=%s%n",
 					contextName, beanName,
@@ -360,6 +476,8 @@ public class WebApplicationContextDiagnosticTest {
 					AopUtils.isAopProxy(repository),
 					context.containsLocalBean("transactionManager"),
 					context.containsBean("transactionManager"));
+			System.out.printf("[%s] %s datasource and applicable transaction advice PASS%n",
+					contextName, beanName);
 		}
 	}
 
@@ -467,17 +585,24 @@ public class WebApplicationContextDiagnosticTest {
 				context.getBeanFactory().getBeanDefinitionNames()));
 	}
 
-	private List<Field> findAutowiredFields(Class<?> type) {
+	private List<Field> findDependencyFields(Class<?> type) {
 		List<Field> fields = new ArrayList<Field>();
 		for (Class<?> current = type; current != null && current != Object.class;
 				current = current.getSuperclass()) {
 			for (Field field : current.getDeclaredFields()) {
-				if (field.isAnnotationPresent(Autowired.class)) {
+				if (field.isAnnotationPresent(Autowired.class) || isApplicationDependency(field.getType())) {
 					fields.add(field);
 				}
 			}
 		}
 		return fields.isEmpty() ? Collections.<Field>emptyList() : fields;
+	}
+
+	private boolean isApplicationDependency(Class<?> type) {
+		String name = type.getName();
+		return name.startsWith("com.defermentsystem.service.")
+				|| name.startsWith("com.defermentsystem.repository.")
+				|| name.equals("com.defermentsystem.domain.Mail");
 	}
 
 	private Object unwrapProxy(Object bean, String contextName, String beanName) {

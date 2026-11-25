@@ -1,8 +1,7 @@
 package com.defermentsystem.mvc;
 
-import java.awt.Robot;
-import java.awt.Toolkit;
-import java.awt.datatransfer.StringSelection;
+import java.io.File;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.*;
@@ -10,8 +9,6 @@ import org.junit.runner.RunWith;
 
 import static org.junit.Assert.*;
 import org.openqa.selenium.*;
-import org.openqa.selenium.firefox.FirefoxDriver;
-import org.openqa.selenium.firefox.FirefoxProfile;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -53,10 +50,7 @@ public class DeferralTest {
 	 
   	@Before
 	  public void setUp() throws Exception {
-		FirefoxProfile fxProfile = new FirefoxProfile();
-		fxProfile.setPreference("browser.helperapps.neverAsk.saveToDisk", "application/pdf");
-	    driver = new FirefoxDriver(fxProfile);
-	    driver.manage().window().maximize();
+	    driver = HeadlessChromeDriver.create();
 	    baseUrl = "http://localhost:8080/";
 	    driver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
 	  }
@@ -76,28 +70,8 @@ public class DeferralTest {
 	    driver.findElement(By.id("studentId")).sendKeys("R0004444");
 	    driver.findElement(By.cssSelector("input[type=\"submit\"]")).click();
 
-	    driver.findElement(By.id("file")).click();
 	    WebElement elem = driver.findElement(By.cssSelector("input[type='file']"));
-	    elem.sendKeys("C:\\Users\\Pio\\Downloads\\Withdrawal_Form.pdf");
-	    
-	    //Setting file path to StringSelection Object in clipboard
-	    StringSelection ss=new StringSelection("C:\\Users\\Pio\\Downloads\\Withdrawal_Form.pdf");
-	    //file path content in clipboard
-	    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(ss, null);
-	  
-	    /*Code to control uploader window which is out of Seleniums reach
-	     * ElementNotVisibleException: Element is not currently visible and so may not be interacted with
-	     * Perform native keystrokes for CTRL+V and CTRL+ENTER
-	     */
-	    Robot robot = new Robot();
-	    robot.delay(1000);
-	    robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
-	    robot.keyPress(java.awt.event.KeyEvent.VK_V);
-	    robot.keyRelease(java.awt.event.KeyEvent.VK_V);
-	    robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
-	    robot.keyPress(java.awt.event.KeyEvent.VK_ENTER);
-	    robot.keyRelease(java.awt.event.KeyEvent.VK_ENTER);
-	    robot.delay(1000);
+	    elem.sendKeys(new File("src/main/webapp/resources/form/Withdrawal_Form.pdf").getAbsolutePath());
 	    
 	    new Select(driver.findElement(By.id("moduleId"))).selectByVisibleText("Cloud Application Frameworks");
 	    new Select(driver.findElement(By.id("programmeId"))).selectByVisibleText("24248");
@@ -107,7 +81,7 @@ public class DeferralTest {
 	    ((JavascriptExecutor)driver).executeScript("arguments[0].click();", element); 
 	      
 	    //instructing Selenium to wait for following page to load by searching for element on next page
-	    WebDriverWait wait = new WebDriverWait(driver, 40);
+	    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(40));
 	    WebElement element2 = wait.until(ExpectedConditions.elementToBeClickable(By.id("myTable")));
 	   
 	    int rowCount = deferralDAO.countRows();
@@ -133,29 +107,15 @@ public class DeferralTest {
 	    driver.findElement(By.id("studentId")).sendKeys("R0004444");
 	    driver.findElement(By.cssSelector("input[type=\"submit\"]")).click();
 	    
-	    driver.findElement(By.id("file")).click();
 	    WebElement elem = driver.findElement(By.cssSelector("input[type='file']"));
-	    elem.sendKeys("C:\\Users\\Pio\\Downloads\\Withdrawal_Form.pdf");
-	    
-	    StringSelection ss=new StringSelection("C:\\Users\\Pio\\Downloads\\Withdrawal_Form.pdf");
-	    Toolkit.getDefaultToolkit().getSystemClipboard().setContents(ss, null); 
-	    
-	    Robot robot = new Robot();
-	    robot.delay(1000);
-	    robot.keyPress(java.awt.event.KeyEvent.VK_CONTROL);
-	    robot.keyPress(java.awt.event.KeyEvent.VK_V);
-	    robot.keyRelease(java.awt.event.KeyEvent.VK_V);
-	    robot.keyRelease(java.awt.event.KeyEvent.VK_CONTROL);
-	    robot.keyPress(java.awt.event.KeyEvent.VK_ENTER);
-	    robot.keyRelease(java.awt.event.KeyEvent.VK_ENTER);
-	    robot.delay(1000);
+	    elem.sendKeys(new File("src/main/webapp/resources/form/Withdrawal_Form.pdf").getAbsolutePath());
 	    
 	    new Select(driver.findElement(By.id("programmeId"))).selectByVisibleText("KCMSD_Y5");
 	    
 	    WebElement element = driver.findElement(By.xpath("/html/body/div[4]/div[2]/div/form/div/div[3]/div[2]/input"));
 	    ((JavascriptExecutor)driver).executeScript("arguments[0].click();", element); 
 	    
-	    WebDriverWait wait = new WebDriverWait(driver, 40);
+	    WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(40));
 	    WebElement element2 = wait.until(ExpectedConditions.elementToBeClickable(By.id("myTable")));
 	    
 	    int rowCount = deferralDAO.countRows();
@@ -165,7 +125,9 @@ public class DeferralTest {
 	
    	@After
 	   public void tearDown() throws Exception {
-	    driver.quit();
+	    if (driver != null) {
+	      driver.quit();
+	    }
 	    String verificationErrorString = verificationErrors.toString();
 	    if (!"".equals(verificationErrorString)) {
 	      fail(verificationErrorString);

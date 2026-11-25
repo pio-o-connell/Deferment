@@ -5,6 +5,7 @@ import static org.junit.Assert.fail;
 
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.After;
@@ -15,7 +16,6 @@ import org.junit.runner.RunWith;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
-import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -61,8 +61,7 @@ public class LoginTest {
 	 */
 	@Before
 	public void setUp() throws Exception {
-		driver = new FirefoxDriver();
-		driver.manage().window().maximize();
+		driver = HeadlessChromeDriver.create();
 		baseUrl = "http://localhost:8080/";
 		driver.manage().timeouts().implicitlyWait(5, TimeUnit.SECONDS);
 	}
@@ -87,7 +86,7 @@ public class LoginTest {
 
 		//page loading not quick enough for execution,to slow down execution so changes come into effect 
 		try {
-			WebDriverWait wait1 = new WebDriverWait(driver,5);
+			WebDriverWait wait1 = new WebDriverWait(driver, Duration.ofSeconds(5));
 			WebElement elementa = wait1.until(ExpectedConditions.visibilityOfElementLocated(By.linkText("Menu Options")));
 		} catch (Exception e) {
 			//e.printStackTrace();
@@ -111,7 +110,7 @@ public class LoginTest {
 		driver.findElement(By.xpath("/html/body/div[4]/div[2]/div/form/div/div/div[5]/div[2]/input")).click();
 
 		//instructing Selenium to wait for following page to load by searching for element on next page
-		WebDriverWait wait = new WebDriverWait(driver, 40);
+		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(40));
 		WebElement element = wait.until(ExpectedConditions.elementToBeClickable(By.id("myTable")));
 
 		List<Programme> programmes=programmeDAO.listProgrammes();
@@ -125,7 +124,9 @@ public class LoginTest {
 	 */
 	@After
 	public void tearDown() throws Exception {
-		driver.quit();
+		if (driver != null) {
+			driver.quit();
+		}
 		String verificationErrorString = verificationErrors.toString();
 		if (!"".equals(verificationErrorString)) {
 			fail(verificationErrorString);

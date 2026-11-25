@@ -3,7 +3,14 @@ package com.defermentsystem.repository;
 import static org.junit.Assert.*;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import javax.sql.DataSource;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -13,6 +20,8 @@ import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.test.context.support.DependencyInjectionTestExecutionListener;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import com.defermentsystem.domain.Deferral;
 import com.defermentsystem.domain.Module;
@@ -23,13 +32,15 @@ import com.github.springtestdbunit.annotation.DatabaseOperation;
 import com.github.springtestdbunit.annotation.DatabaseSetup;
 
 @RunWith(SpringJUnit4ClassRunner.class)
-@ContextConfiguration({ "classpath:repository-context.xml" })
+@ContextConfiguration({ "classpath:test-repository-context.xml" })
 @TestExecutionListeners({ DependencyInjectionTestExecutionListener.class,
 		DbUnitTestExecutionListener.class })
 public class DeferralJdbcDaoSupportTest {
 
 	@Autowired
 	ApplicationContext autoWireContext;
+	@Autowired
+	DataSource dataSource;
 	DeferralJdbcDaoSupport deferralJdbcDaoSupport;
 	ModuleJdbcDaoSupport moduleJdbcDaoSupport;
 	RegistrationJdbcDaoSupport registrationJdbcDaoSupport;
@@ -67,8 +78,11 @@ public class DeferralJdbcDaoSupportTest {
 
 		// Confirm correct Module Codes;
 		List<Deferral> studentDeferrals = deferralJdbcDaoSupport.listDeferralsByStudent("R0004444");
-		assertEquals("COMP8040", studentDeferrals.get(0).getModuleId());
-		assertEquals("COMP8016", studentDeferrals.get(1).getModuleId());
+		Set<String> moduleIds = new HashSet<String>();
+		for (Deferral deferral : studentDeferrals) {
+			moduleIds.add(deferral.getModuleId());
+		}
+		assertEquals(new HashSet<String>(Arrays.asList("COMP8040", "COMP8016")), moduleIds);
 
 	}
 
@@ -111,8 +125,8 @@ public class DeferralJdbcDaoSupportTest {
 		deferralJdbcDaoSupport.approveModuleDeferral("R0020934", "COMP8038");
 		deferralJdbcDaoSupport.approveModuleDeferral("R0020934", "COMP8016");
 		List<Deferral> deferrals = deferralJdbcDaoSupport.listDeferralsByStudent("R0020934");
-		assertEquals(deferrals.get(0).getApproval(), "True");
-		assertEquals(deferrals.get(1).getApproval(), "True");
+		assertTrue("True".equalsIgnoreCase(deferrals.get(0).getApproval()));
+		assertTrue("True".equalsIgnoreCase(deferrals.get(1).getApproval()));
 
 		 /*Test that the entires have been deleted from the student's
 		 registration
@@ -133,8 +147,8 @@ public class DeferralJdbcDaoSupportTest {
 		deferralJdbcDaoSupport.createProgrammeDeferral("R0020934", "KCLDC_Y4");
 		deferralJdbcDaoSupport.approveProgrammeDeferral("R0020934", "KCLDC_Y4");
 		List<Deferral> deferrals = deferralJdbcDaoSupport.listDeferralsByStudent("R0020934");
-		assertEquals(deferrals.get(0).getApproval(), "True");
-		assertEquals(deferrals.get(1).getApproval(), "True");
+		assertTrue("True".equalsIgnoreCase(deferrals.get(0).getApproval()));
+		assertTrue("True".equalsIgnoreCase(deferrals.get(1).getApproval()));
 
 		/*Test that the entires have been deleted from the student's
 		registration*/
@@ -226,10 +240,37 @@ public class DeferralJdbcDaoSupportTest {
 	@DatabaseSetup(value="classpath:databaseEntries.xml", type=DatabaseOperation.CLEAN_INSERT)
 	public void testCreateDeferralGetId() {
 		deferralJdbcDaoSupport = (DeferralJdbcDaoSupport) autoWireContext.getBean("deferralJdbcDaoSupport");
-		deferralJdbcDaoSupport.createDeferralGetId("R0004444", "L001", "KCMSD_Y5", "COMP8040");
+		int id = deferralJdbcDaoSupport.createDeferralGetId("R0004444", "L001", "KCMSD_Y5", "COMP8040");
 		assertEquals(1, deferralJdbcDaoSupport.countRows());
+		assertEquals("R0004444", deferralJdbcDaoSupport.getDeferral(id).getStudentId());
 		
 		
+	}
+
+	@Test
+	@DatabaseSetup(value="classpath:databaseEntries.xml", type=DatabaseOperation.CLEAN_INSERT)
+	public void testCreateModuleDeferralGetId() {
+		deferralJdbcDaoSupport = (DeferralJdbcDaoSupport) autoWireContext.getBean("deferralJdbcDaoSupport");
+		int id = deferralJdbcDaoSupport.createModuleDeferralGetId("R0004444", "COMP8040", 24248);
+		assertEquals("R0004444", deferralJdbcDaoSupport.getDeferral(id).getStudentId());
+	}
+
+	@Test
+	public void testGeneratedIdWhenDriverReturnsMultipleColumns() {
+		Map<String, Object> row = new LinkedHashMap<String, Object>();
+		row.put("def_id", 42);
+		row.put("student_id", "R0004444");
+		List<Map<String, Object>> rows = new ArrayList<Map<String, Object>>();
+		rows.add(row);
+		Integer id = ReflectionTestUtils.invokeMethod(new DeferralJdbcDaoSupport(dataSource),
+				"generatedDeferralId", new GeneratedKeyHolder(rows));
+		assertEquals(Integer.valueOf(42), id);
+	}
+
+	@Test(expected = IllegalStateException.class)
+	public void testMissingGeneratedIdFailsClearly() {
+		ReflectionTestUtils.invokeMethod(new DeferralJdbcDaoSupport(dataSource),
+				"generatedDeferralId", new GeneratedKeyHolder());
 	}
 
 }

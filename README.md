@@ -327,6 +327,14 @@ Or deploy `target/SpringWebProject.war` to any Servlet 3.1-compatible container 
 
 The test suite uses JUnit 4, DBUnit with an HSQLDB in-memory database for DAO tests, and Selenium for browser-based UI tests. A sample DAO test is at `src/test/java/com/defermentsystem/repository/DeferralJdbcDaoSupportTest.java`.
 
+The repository tests create their own in-memory HSQLDB tables from `src/test/resources/test-schema.sql`; DBUnit loads the existing dataset before each test. Run them with Java 8:
+
+```powershell
+mvn '-Dtest=*JdbcDaoSupportTest' test
+```
+
+The Selenium tests use a separately running application and the existing `repository-context.xml`, not this in-memory repository-test database. Their DBUnit setup can modify the database configured there; use a dedicated test database and application before running them.
+
 ### Spring WebApplicationContext diagnostic
 
 `src/test/java/com/defermentsystem/context/WebApplicationContextDiagnosticTest.java` creates the Root context using the same two XML locations listed in `web.xml`, then initializes a `DispatcherServlet` named `mvc-dispatcher` so Spring loads its conventional MVC Child configuration.
@@ -340,6 +348,18 @@ mvn -Dtest=WebApplicationContextDiagnosticTest test
 ```
 
 A successful run means the diagnostic's assertions passed for the configuration loaded by that test. It is separate from the Selenium browser tests and does not, by itself, establish that the complete web application has passed end-to-end testing.
+
+### Spring configuration checker
+
+From the project root, run the PowerShell checker with Maven and Java 8 configured (Maven uses `JAVA_HOME`):
+
+```powershell
+.\Check-Deferment-Configuration.ps1
+```
+
+The checker runs `StaticConfigurationTest` against the actual Spring XML and web descriptor, then runs `WebApplicationContextDiagnosticTest` to initialise the real Root and MVC Child contexts without a running Tomcat server. It checks context locations, component scans, explicit beans, local bean counts and separation, inherited beans, dependency injection, repository data sources and transaction advice, and MVC handler mappings.
+
+`PASS` means a check succeeded; `FAIL` means a required check failed; `WARNING` highlights something to review that does not necessarily prevent startup. The script returns a non-zero exit code if Maven or a required check fails. The semester repository currently has no transactional methods, so it is reported as a warning rather than required to have a transaction proxy. The checker does not modify configuration or application data, but Maven writes build output to `target/`. A local database configuration or `DATABASE_URL` is still needed for the Root context to start.
 
 ---
 

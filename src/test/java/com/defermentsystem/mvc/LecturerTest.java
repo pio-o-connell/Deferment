@@ -2,6 +2,7 @@ package com.defermentsystem.mvc;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 import org.junit.*;
@@ -9,7 +10,6 @@ import org.junit.runner.RunWith;
 
 import static org.junit.Assert.*;
 import org.openqa.selenium.*;
-import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -52,8 +52,7 @@ public class LecturerTest {
 	
 	@Before
 	public void setUp() throws Exception {
-		driver = new FirefoxDriver();
-		driver.manage().window().maximize();
+		driver = HeadlessChromeDriver.create();
 		baseUrl = "http://localhost:8080/";
 		driver.manage().timeouts().implicitlyWait(10, TimeUnit.SECONDS);
 
@@ -78,7 +77,7 @@ public class LecturerTest {
 		driver.findElement(By.cssSelector("input[type=\"submit\"]")).click();
 
 		//instructing Selenium to wait for following page to load by searching for element on next page
-		WebDriverWait wait = new WebDriverWait(driver, 10);
+		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 		WebElement element = wait.until(ExpectedConditions.elementToBeClickable(By.id("lecturerTable")));
 
 		Lecturer actualLecturer= lecturerDAO.getLecturer("L004");
@@ -137,7 +136,7 @@ public class LecturerTest {
 
 		//page loading not quick enough for execution,to slow down execution so changes come into effect 
 		try {
-			WebDriverWait wait1 = new WebDriverWait(driver,5);
+			WebDriverWait wait1 = new WebDriverWait(driver, Duration.ofSeconds(5));
 			WebElement elementa = wait1.until(ExpectedConditions.visibilityOfElementLocated(By.id("myTable")));
 		} catch (Exception e) {
 			//e.printStackTrace();
@@ -324,7 +323,9 @@ public class LecturerTest {
 	
 	@After
 	public void tearDown() throws Exception {
-		driver.quit();
+		if (driver != null) {
+			driver.quit();
+		}
 		String verificationErrorString = verificationErrors.toString();
 		if (!"".equals(verificationErrorString)) {
 			fail(verificationErrorString);

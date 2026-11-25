@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import javax.sql.DataSource;
 
@@ -209,6 +210,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 		
 		Object[] params=new Object[]{ studentID, lectID, progID, moduleID};
 		PreparedStatementCreatorFactory psc=new PreparedStatementCreatorFactory(SQL);
+		psc.setReturnGeneratedKeys(true);
 		psc.addParameter(new SqlParameter("Student_ID", Types.VARCHAR));
 		psc.addParameter(new SqlParameter("Lect_ID", Types.VARCHAR));
 		psc.addParameter(new SqlParameter("Programme_ID", Types.VARCHAR));
@@ -217,9 +219,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 		KeyHolder holder = new GeneratedKeyHolder();
 		getJdbcTemplate().update(psc.newPreparedStatementCreator(params), holder);
 		
-		String key = holder.getKey().toString();
-		int intKey = Integer.parseInt(key);
-		return intKey;
+		return generatedDeferralId(holder);
 	}
 	
 
@@ -345,6 +345,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 		Object[] params = new Object[] { studentId, lecturerId, programmeId,moduleId };
 		PreparedStatementCreatorFactory psc = new PreparedStatementCreatorFactory(SQL3);
+		psc.setReturnGeneratedKeys(true);
 		psc.addParameter(new SqlParameter("Student_ID", Types.VARCHAR));
 		psc.addParameter(new SqlParameter("Lect_ID", Types.VARCHAR));
 		psc.addParameter(new SqlParameter("Programme_ID", Types.VARCHAR));
@@ -353,10 +354,28 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 		KeyHolder holder = new GeneratedKeyHolder();
 		getJdbcTemplate().update(psc.newPreparedStatementCreator(params),holder);
 		
-		String key = holder.getKey().toString();
-		int intKey = Integer.parseInt(key);
-		return intKey;
+		return generatedDeferralId(holder);
 
+	}
+
+	private int generatedDeferralId(KeyHolder holder) {
+		Map<String, Object> keys = holder.getKeys();
+		Object id = null;
+		if (keys != null) {
+			for (Map.Entry<String, Object> key : keys.entrySet()) {
+				if ("def_id".equalsIgnoreCase(key.getKey())) {
+					id = key.getValue();
+					break;
+				}
+			}
+			if (id == null && keys.size() == 1) {
+				id = keys.values().iterator().next();
+			}
+		}
+		if (!(id instanceof Number)) {
+			throw new IllegalStateException("Deferral insert did not return a numeric generated ID");
+		}
+		return Integer.parseInt(id.toString());
 	}
 	
 	@SuppressWarnings("unchecked")

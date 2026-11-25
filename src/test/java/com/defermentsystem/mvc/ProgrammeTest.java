@@ -1,13 +1,13 @@
 package com.defermentsystem.mvc;
 
 import java.util.List;
+import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import org.junit.*;
 import org.junit.runner.RunWith;
 
 import static org.junit.Assert.*;
 import org.openqa.selenium.*;
-import org.openqa.selenium.firefox.FirefoxDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -32,7 +32,7 @@ import com.defermentsystem.repository.ProgrammeDAO;
 @TestExecutionListeners({ DependencyInjectionTestExecutionListener.class,
 	DbUnitTestExecutionListener.class })
 
-public class ProgrammeTest  {//extends FirefoxDriver
+public class ProgrammeTest {
 
 	/** The programmeDAO. */
 	@Autowired
@@ -51,8 +51,7 @@ public class ProgrammeTest  {//extends FirefoxDriver
 	
 	@Before
 	public void setUp() throws Exception {
-		driver = new FirefoxDriver();
-		driver.manage().window().maximize();
+		driver = HeadlessChromeDriver.create();
 		baseUrl = "http://localhost:8080/";
 		driver.manage().timeouts().implicitlyWait(5, TimeUnit.SECONDS);
 
@@ -82,7 +81,7 @@ public class ProgrammeTest  {//extends FirefoxDriver
 		driver.findElement(By.cssSelector("input[type=\"submit\"]")).click();
 
 		//instructing Selenium to wait for following page to load by searching for element on next page
-		WebDriverWait wait = new WebDriverWait(driver, 40);
+		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(40));
 		WebElement element = wait.until(ExpectedConditions.elementToBeClickable(By.id("myTable")));
 
 		assertEquals("Programme List",driver.getTitle());
@@ -112,7 +111,7 @@ public class ProgrammeTest  {//extends FirefoxDriver
 
 		//page loading not quick enough for execution,to slow down execution so changes come into effect 
 		try {
-			WebDriverWait wait1 = new WebDriverWait(driver,5);
+			WebDriverWait wait1 = new WebDriverWait(driver, Duration.ofSeconds(5));
 			WebElement elementa = wait1.until(ExpectedConditions.visibilityOfElementLocated(By.id("myTable")));
 		} catch (Exception e) {
 			//e.printStackTrace();
@@ -137,7 +136,7 @@ public class ProgrammeTest  {//extends FirefoxDriver
 		driver.findElement(By.id("modify")).click();
 
 		try {
-			WebDriverWait wait1 = new WebDriverWait(driver, 5);
+			WebDriverWait wait1 = new WebDriverWait(driver, Duration.ofSeconds(5));
 			WebElement elementa = wait1.until(ExpectedConditions.visibilityOfElementLocated(By.id("myTable")));
 		} catch (Exception e) {
 			//e.printStackTrace();
@@ -188,7 +187,9 @@ public class ProgrammeTest  {//extends FirefoxDriver
 	
 	@After
 	public void tearDown() throws Exception {
-		driver.quit();
+		if (driver != null) {
+			driver.quit();
+		}
 		String verificationErrorString = verificationErrors.toString();
 		if (!"".equals(verificationErrorString)) {
 			fail(verificationErrorString);
