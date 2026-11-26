@@ -122,9 +122,9 @@ public interface DeferralDAO {
 	public void updateDeferral(int id, String approval);
 
 	/**
-	 * Atomically updates a pending deferral only for its authorised lecturer.
+	 * Atomically records a decision on a pending deferral.
 	 */
-	public int updateDeferralStatusIfPending(int id, String approval, String lectId);
+	public int updateDeferralStatusIfPending(int id, String approval, String lectId, String rejectionReason);
 
 	/**
 	 * This is the method used to count the rows in the table.

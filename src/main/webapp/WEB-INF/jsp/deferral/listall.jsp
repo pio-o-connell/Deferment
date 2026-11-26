@@ -3,9 +3,11 @@
 
 
 
-<c:if test="${not empty deferrals}">
-	<h4>${message}</h4>
+<c:if test="${not empty message}">
+	<h4><c:out value="${message}"/></h4>
+</c:if>
 
+<c:if test="${not empty deferrals}">
 
 
 	<table data-role="table" class="ui-responsive" data-mode="columntoggle"
@@ -18,6 +20,8 @@
 				<th data-priority="1">Programme ID</th>
 				<th data-priority="1">Module ID</th>
 				<th data-priority="4">Approval</th>
+				<th data-priority="5">Decision lecturer</th>
+				<th data-priority="5">Rejection reason</th>
 				<th data-priority="4">Withdrawal Form</th>
 				<th data-priority="4">Delete</th>
 				<th data-priority="5">Modify</th>
@@ -44,16 +48,15 @@
 						href="<%= request.getContextPath() %>/admin/module/list/id/${deferral.moduleId}"
 						class="ui-btn ui-corner-all">${deferral.moduleId}</a></td>
 					<c:choose>
-						<c:when test="${deferral.approval=='True'}">
-							<td>${deferral.approval}</td>
+						<c:when test="${deferral.approval=='False'}">
+							<td>Pending</td>
 						</c:when>
 						<c:otherwise>
-
-							<td><a
-								href="<%= request.getContextPath() %>/admin/deferral/listall/${deferral.moduleId}/${deferral.studentId}"
-								class="ui-btn ui-corner-all">Confirm Approval</a></td>
+							<td><c:out value="${deferral.approval}"/></td>
 						</c:otherwise>
 					</c:choose>
+					<td><c:out value="${deferral.decisionLecturerId}"/></td>
+					<td><c:out value="${deferral.rejectionReason}"/></td>
 					<td><a
 						href="<%= request.getContextPath() %>/admin/deferral/downloadForm/id/${deferral.defId}"
 						download target="_blank" class="ui-btn ui-corner-all">Download
@@ -61,9 +64,9 @@
 					<td><a
 						href="<%= request.getContextPath() %>/admin/deferral/delete/id/${deferral.defId}"
 						class="ui-btn ui-corner-all">Delete</a></td>
-					<td><a
+					<td><c:if test="${deferral.approval=='False'}"><a
 						href="<%= request.getContextPath() %>/admin/deferral/modify/id/${deferral.defId}"
-						class="ui-btn ui-corner-all">Modify</a></td>
+						class="ui-btn ui-corner-all">Decide</a></c:if></td>
 
 
 

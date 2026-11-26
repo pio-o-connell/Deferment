@@ -1,11 +1,20 @@
 package com.defermentsystem.service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationAdapter;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.defermentsystem.domain.Deferral;
 import com.defermentsystem.exceptions.InvalidDeferralStateException;
@@ -15,6 +24,7 @@ import com.defermentsystem.repository.DeferralDAO;
 @Transactional(readOnly = true)
 public class DeferralServiceImpl implements DeferralService {
 
+	private static final Logger logger = Logger.getLogger(DeferralServiceImpl.class);
 	@Autowired
 	private DeferralDAO deferralDAO;
 	
@@ -110,53 +120,106 @@ public class DeferralServiceImpl implements DeferralService {
 
 	@Override
 	@Transactional(rollbackFor = Exception.class)
-	public void approveModuleDeferral(String studId, String moduleId) {
-		int updated = deferralDAO.approveModuleDeferral(studId, moduleId);
-		if (updated == 0) {
-			throw new InvalidDeferralStateException("No pending module deferral is available for approval.");
-		}
-
-	}
-
-	@Override
-	@Transactional(rollbackFor = Exception.class)
-	public void approveProgrammeDeferral(String studId, String programmeId) {
-		int updated = deferralDAO.approveProgrammeDeferral(studId, programmeId);
-		if (updated == 0) {
-			throw new InvalidDeferralStateException("No pending programme deferral is available for approval.");
-		}
-
-	}
-
-	@Override
-	@Transactional(rollbackFor = Exception.class)
-	public void updateDeferral(int id, String approval) {
-		deferralDAO.updateDeferral(id, approval);
-
-	}
-
-	@Override
-	@Transactional(rollbackFor = Exception.class)
 	public void decideDeferral(int id, String lecturerId, String decision) {
+		decideDeferral(id, lecturerId, decision, null);
+	}
+
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	public void decideDeferral(int id, String lecturerId, String decision, String rejectionReason) {
+		if (!DECISION_LECTURER_ID.equals(lecturerId)) {
+			throw new InvalidDeferralStateException("Lecturer is not authorised to decide this deferral.");
+		}
 		if (!"True".equalsIgnoreCase(decision) && !"Rejected".equalsIgnoreCase(decision)) {
 			throw new InvalidDeferralStateException("A deferral can only be approved or rejected.");
 		}
 
-		Deferral deferral = deferralDAO.getDeferral(id);
+		String reason = rejectionReason == null ? null : rejectionReason.trim();
+		if (reason != null && reason.isEmpty()) {
+			reason = null;
+		}
+		if (reason != null && reason.length() > 1000) {
+			throw new InvalidDeferralStateException("The rejection reason must not exceed 1000 characters.");
+		}
+		if (reason != null && !"Rejected".equalsIgnoreCase(decision)) {
+			throw new InvalidDeferralStateException("A rejection reason can only be supplied when rejecting a deferral.");
+		}
+
+		Deferral deferral;
+		try {
+			deferral = deferralDAO.getDeferral(id);
+		} catch (EmptyResultDataAccessException e) {
+			throw new InvalidDeferralStateException("Deferral does not exist.");
+		}
 		if (deferral == null) {
 			throw new InvalidDeferralStateException("Deferral does not exist.");
 		}
 		if (!"False".equalsIgnoreCase(deferral.getApproval())) {
 			throw new InvalidDeferralStateException("Deferral is no longer pending.");
 		}
-		if (lecturerId != null && !lecturerId.equals(deferral.getLectId())) {
-			throw new InvalidDeferralStateException("Lecturer is not authorised to decide this deferral.");
-		}
 
 		String normalisedDecision = "True".equalsIgnoreCase(decision) ? "True" : "Rejected";
-		int updated = deferralDAO.updateDeferralStatusIfPending(id, normalisedDecision, deferral.getLectId());
+		int updated = deferralDAO.updateDeferralStatusIfPending(id, normalisedDecision, lecturerId, reason);
 		if (updated != 1) {
 			throw new InvalidDeferralStateException("Deferral changed before the decision could be recorded.");
+		}
+	}
+
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	public int submitModuleDeferral(String studentId, String moduleId, int crnNumber,
+			byte[] document, Path uploadDirectory) throws IOException {
+		validateSubmissionDocument(document, uploadDirectory);
+		int id = deferralDAO.createModuleDeferralGetId(studentId, moduleId, crnNumber);
+		ArrayList<Integer> ids = new ArrayList<Integer>();
+		ids.add(id);
+		writeDocuments(ids, document, uploadDirectory);
+		return id;
+	}
+
+	@Override
+	@Transactional(rollbackFor = Exception.class)
+	public ArrayList<Integer> submitProgrammeDeferral(String studentId, String programmeId,
+			byte[] document, Path uploadDirectory) throws IOException {
+		validateSubmissionDocument(document, uploadDirectory);
+		ArrayList<Integer> ids = deferralDAO.createProgrammeDeferralGetId(studentId, programmeId);
+		if (ids.isEmpty()) {
+			throw new IllegalArgumentException("No modules are registered for this student and programme.");
+		}
+		writeDocuments(ids, document, uploadDirectory);
+		return ids;
+	}
+
+	private void validateSubmissionDocument(byte[] document, Path uploadDirectory) {
+		if (document == null || document.length == 0 || uploadDirectory == null) {
+			throw new IllegalArgumentException("A supporting document and upload directory are required.");
+		}
+	}
+
+	private void writeDocuments(List<Integer> ids, byte[] document, Path uploadDirectory) throws IOException {
+		final List<Path> createdFiles = new ArrayList<Path>();
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronizationAdapter() {
+			@Override
+			public void afterCompletion(int status) {
+				if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+					for (Path file : createdFiles) {
+						try {
+							Files.deleteIfExists(file);
+						} catch (IOException e) {
+							logger.error("Could not remove a document after deferral rollback: " + file, e);
+						}
+					}
+				} else if (status != TransactionSynchronization.STATUS_COMMITTED) {
+					logger.error("Deferral transaction outcome is unknown; inspect uploaded documents: " + createdFiles);
+				}
+			}
+		});
+		Files.createDirectories(uploadDirectory);
+		for (Integer id : ids) {
+			Path file = uploadDirectory.resolve(id + ".pdf");
+			Files.createFile(file);
+			createdFiles.add(file);
+			Files.write(file, document, StandardOpenOption.WRITE);
 		}
 	}
 

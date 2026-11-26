@@ -13,6 +13,8 @@ public class Deferral {
 	private String programmeId;
 	private String moduleId;
 	private String approval;
+	private String decisionLecturerId;
+	private String rejectionReason;
 	private MultipartFile file;
 
 	public Deferral() {
@@ -76,6 +78,22 @@ public class Deferral {
 
 	public void setApproval(String approval) {
 		this.approval = approval;
+	}
+
+	public String getDecisionLecturerId() {
+		return decisionLecturerId;
+	}
+
+	public void setDecisionLecturerId(String decisionLecturerId) {
+		this.decisionLecturerId = decisionLecturerId;
+	}
+
+	public String getRejectionReason() {
+		return rejectionReason;
+	}
+
+	public void setRejectionReason(String rejectionReason) {
+		this.rejectionReason = rejectionReason;
 	}
 	
 	public MultipartFile getFile() {

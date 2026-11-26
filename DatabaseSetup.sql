@@ -8,7 +8,9 @@ CREATE TABLE IF NOT EXISTS `deferrals` (
   `Lect_ID` varchar(10) NOT NULL,
   `Programme_ID` varchar(20) NOT NULL,
   `Module_ID` varchar(10) NOT NULL,
-  `Approved` varchar(10) NOT NULL DEFAULT 'False'
+  `Approved` varchar(10) NOT NULL DEFAULT 'False',
+  `Decision_Lect_ID` varchar(10) DEFAULT NULL,
+  `Rejection_Reason` varchar(1000) DEFAULT NULL
 ) ENGINE=InnoDB  DEFAULT CHARSET=utf8 AUTO_INCREMENT=782 ;
 
 

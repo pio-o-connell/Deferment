@@ -1,5 +1,7 @@
 package com.defermentsystem.service;
 
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -7,6 +9,7 @@ import com.defermentsystem.domain.Deferral;
 import com.defermentsystem.repository.DeferralDAO;
 
 public interface DeferralService {
+	String DECISION_LECTURER_ID = "L001";
 	
 	/**
 	 * This is the method to be used to connect up with the DeferralDAO
@@ -102,24 +105,15 @@ public interface DeferralService {
 			String studentID);
 
 	/**
-	 * This is the method used to approve a module deferral.
-	 */
-	public void approveModuleDeferral(String studId, String moduleId);
-
-	/**
-	 * This is the method used to approve a programme deferral.
-	 */
-	public void approveProgrammeDeferral(String studId, String programmeId);
-	/** 
-	 * This is the method to be used to update
-	 * a record into the deferral table.
-	 */
-	public void updateDeferral(int id, String approval);
-
-	/**
-	 * Approve or reject a pending deferral with an authorised lecturer guard.
+	 * Approve or reject a pending deferral as lecturer L001.
 	 */
 	public void decideDeferral(int id, String lecturerId, String decision);
+
+	public void decideDeferral(int id, String lecturerId, String decision, String rejectionReason);
+
+	int submitModuleDeferral(String studentId, String moduleId, int crnNumber, byte[] document, Path uploadDirectory) throws IOException;
+
+	ArrayList<Integer> submitProgrammeDeferral(String studentId, String programmeId, byte[] document, Path uploadDirectory) throws IOException;
 	
 	/**
 	 * This is the method to be used to create a Module Deferral and return the id generated

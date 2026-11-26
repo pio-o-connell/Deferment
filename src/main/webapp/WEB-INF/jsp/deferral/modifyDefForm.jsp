@@ -4,21 +4,9 @@
 
 <!DOCTYPE html>
 <html>
-<head>
-<script type="text/javascript">
-$(function() {
-$("#modify").click(function(){ 
-	var approval=$("#approval").val(); 
-	var defferalId=${deferral.defId};
-	var url="/admin/deferral/modify/id/"+defferalId+ "/approval/"+approval ;
-	location.href="<%=request.getContextPath()%>" + url;
-				});
-	});
-</script>
-</head>
-
 <body>
-	<form:form modelAttribute="deferral">
+	<c:url var="decisionUrl" value="/admin/deferral/modify/id/${deferral.defId}/decision"/>
+	<form:form method="post" action="${decisionUrl}" modelAttribute="deferral" data-ajax="false">
 
 		<div class="modifyDropdown">
 			<div class="modifyPositioning">
@@ -59,15 +47,16 @@ $("#modify").click(function(){
 				<div class="modifyDropdown2">
 					<form:select path="approval" id="approval">
 						<form:option value="True"></form:option>
-						<form:option value="False"></form:option>
 						<form:option value="Rejected"></form:option>
 						<form:errors path="approval" cssClass="error"
 							class="notification error" style="display:block"></form:errors>
 					</form:select>
 
+					<form:label path="rejectionReason">Rejection reason (optional; for rejection only)</form:label>
+					<form:textarea path="rejectionReason" maxlength="1000"/>
 
-					<input type="button" class="ui-btn" data-theme="b"
-						data-icon="check" value="Modify" id="modify" />
+					<input type="submit" class="ui-btn" data-theme="b"
+						data-icon="check" value="Submit decision" />
 				</div>
 			</div>
 		</div>

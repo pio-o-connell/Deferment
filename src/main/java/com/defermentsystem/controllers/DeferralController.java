@@ -1,13 +1,13 @@
 package com.defermentsystem.controllers;
 
-import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.ArrayList;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.Principal;
 import java.util.Date;
 import java.util.List;
 
@@ -16,7 +16,11 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.validation.Valid;
 
+import org.apache.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
+import org.springframework.mail.MailException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.validation.BindingResult;
@@ -38,11 +42,14 @@ import com.defermentsystem.service.ModuleService;
 import com.defermentsystem.service.ProgrammeService;
 import com.defermentsystem.service.StudentService;
 import com.defermentsystem.exceptions.FormUploadException;
+import com.defermentsystem.exceptions.InvalidDeferralStateException;
 
 
 @Controller
 @RequestMapping("/admin/deferral")
 public class DeferralController {
+
+	private static final Logger logger = Logger.getLogger(DeferralController.class);
 
 	@Autowired
 	DeferralService deferralService;
@@ -57,9 +64,6 @@ public class DeferralController {
 	@Autowired
 	private Mail mail;
 	
-	private Module module;
-	private int crnNumber;
-
 	
 	
 	@RequestMapping(value = "/listall", method = RequestMethod.GET)
@@ -110,17 +114,6 @@ public class DeferralController {
 	
 
 	 
-	@RequestMapping(value = "/listall/{moduleId}/{studentId}", method = RequestMethod.GET)
-	public String listApprovedDeferrals(@PathVariable String moduleId,@PathVariable String studentId, ModelMap model) {
-		Date date = new java.util.Date();
-		deferralService.approveModuleDeferral(studentId, moduleId);
-		List<Deferral> listDefferals = deferralService.listDeferrals();
-		model.addAttribute("deferrals", listDefferals);
-		model.addAttribute("now", date);
-		return "displayDeferrals";
-	}
-	
-
 	@RequestMapping(value = "/advancedlist", method = RequestMethod.GET)
 	public String advancedSearch() {
 		return "displayDeferralsByStudent";
@@ -190,91 +183,55 @@ public class DeferralController {
 	public String displayModuleDeferralPage2(
 			@ModelAttribute("deferral") Deferral deferral,@RequestParam("file") MultipartFile file,
 			BindingResult result, ModelMap model) {
-		
-		int id=0;
-
 		if (result.hasErrors()) {
-			return "/addModuleDeferralPage2";
+			model.addAttribute("message", "Creation of deferral failed. Check the submitted information.");
+			return "displayError";
 		}
-		
-		try {
-			 if (!file.isEmpty()) {
-				 
-				 validateImage(file);
-				 
-		
-		try{
-			/*This is a little trick im using! I need to get the CRN's for the modules.
-			 * However my deferral model doesnt actually contain a CRN  parameter or setter. 
-			 * It does however have a programme Id setter and getter.
-			 * So im using this to pass through my crn value.*/
-		crnNumber= Integer.parseInt(deferral.getProgrammeId());
-		module=moduleService.getModuleByName(deferral.getModuleId(), crnNumber);
-		
-		// Create the module deferral
-		id=deferralService.createModuleDeferralGetId(deferral.getStudentId(), module.getModuleId(), crnNumber);
-		
-		// Set file path and size
-		 byte[] bytes = file.getBytes(); 
-         File dir = new File(servletContext.getRealPath("/")+"/resources/form/uploadedForms");
-         
-         if (!dir.exists())
-             dir.mkdirs();		                
-      		 
-         // Create the file on server
-         String fileLocation=dir.getAbsolutePath()
-                 + File.separator + id + ".pdf";
-         
-         File serverFile = new File(fileLocation);
-         
-         BufferedOutputStream stream = new BufferedOutputStream(
-                 new FileOutputStream(serverFile));
-         
-         stream.write(bytes);
-         stream.close();	
-		}
-		catch (Exception e)
-		{
-			model.addAttribute("message", "Creation of deferral failed, "+e.getLocalizedMessage());
-			e.printStackTrace();
-		}
-		}	else{
-				 model.addAttribute("message", "You failed to upload " + file.getOriginalFilename() + " because the file was empty.");
-				 return "displayError"; 
-			 }
-			} catch(FormUploadException e){
-				 model.addAttribute("message", "Creation of deferral failed. The system only supports PDFs.");
-				 return "displayError"; 
-			
-			}	
-		
-		Date date = new java.util.Date();
-		List<Deferral> listDefferals = deferralService.listDeferralsByStudent(deferral.getStudentId());
-		model.addAttribute("deferrals", listDefferals);
-		model.addAttribute("now", date);
-		// If the deferral is successfully created, send Email and display the deferral list.
-		if(id!=0)
-		{
-			//Send Email to CIT Admissions 
-			Student student=studentService.getStudent(deferral.getStudentId());
-			String studentName=student.getFirstName()+ " " + student.getLastName();
-			mail.sendModuleDeferralMail(studentName,student.getStudentId(),module.getModuleId(), crnNumber);
-			
-			//display the deferral list
-			return "displayDeferrals";
-		}
-		// If the deferral is not created succesfully, then display an error
-		else{
-			model.addAttribute("message", "Module Name did not match corresponding CRN");
-			return "displayError"; 
-		}
-		
-			 }
 
-		private void validateImage(MultipartFile image){
-			if(!image.getContentType().equals("application/pdf")){
-				throw new FormUploadException("OnlyPDFaccepted");
-			}
+		Module module;
+		Student student;
+		int crnNumber;
+		try {
+			validateImage(file);
+			crnNumber = Integer.parseInt(deferral.getProgrammeId());
+			module = moduleService.getModuleByName(deferral.getModuleId(), crnNumber);
+			student = studentService.getStudent(deferral.getStudentId());
+			deferralService.submitModuleDeferral(deferral.getStudentId(), module.getModuleId(),
+					crnNumber, file.getBytes(), uploadDirectory());
+		} catch (FormUploadException | IllegalArgumentException e) {
+			model.addAttribute("message", "Creation of deferral failed. Check the selected module and PDF.");
+			logger.warn("Module deferral validation failed", e);
+			return "displayError";
+		} catch (IOException | DataAccessException e) {
+			model.addAttribute("message", "Creation of deferral failed. Please try again.");
+			logger.error("Module deferral submission failed", e);
+			return "displayError";
+		}
+
+		try {
+			mail.sendModuleDeferralMail(student.getFirstName() + " " + student.getLastName(),
+					student.getStudentId(), module.getModuleId(), crnNumber);
+		} catch (MailException e) {
+			logger.error("Module deferral committed, but the admissions email failed", e);
+			model.addAttribute("message", "Deferral saved, but the admissions notification could not be sent.");
+		}
+		model.addAttribute("deferrals", deferralService.listDeferralsByStudent(deferral.getStudentId()));
+		model.addAttribute("now", new Date());
+		return "displayDeferrals";
+	}
+
+	private void validateImage(MultipartFile image) {
+		if (image.isEmpty() || !"application/pdf".equalsIgnoreCase(image.getContentType())) {
+			throw new FormUploadException("Only non-empty PDFs are accepted.");
+		}
+	}
+
+	private Path uploadDirectory() throws IOException {
+		String root = servletContext.getRealPath("/");
+		if (root == null) {
+			throw new IOException("The deployed application has no filesystem path for uploaded forms.");
+		}
+		return Paths.get(root, "resources", "form", "uploadedForms");
 	}
 	
 
@@ -330,70 +287,34 @@ public class DeferralController {
 			BindingResult result, ModelMap model) {
 
 		if (result.hasErrors()) {
-			return "newProgrammeDeferralPage2";
+			model.addAttribute("message", "Creation of deferral failed. Check the submitted information.");
+			return "displayError";
 		}
-		
-		try{
-
-			 if (!file.isEmpty()) {
-				 
-				 validateImage(file);
-			
-
-		try{		 
-		//Create the programme deferral
-		ArrayList<Integer> idList=deferralService.createProgrammeDeferralGetId(deferral.getStudentId(), deferral.getProgrammeId());
-
-		
-		// Set file path and size
-		 byte[] bytes = file.getBytes(); 
-         File dir = new File(servletContext.getRealPath("/")+"/resources/form/uploadedForms");
-         
-         if (!dir.exists())
-             dir.mkdirs();		                
-      		 
-         for (int i = 0; i < idList.size(); i++) {
-         // Create the files on server
-         String fileLocation=dir.getAbsolutePath()
-                 + File.separator + idList.get(i) + ".pdf";
-         
-         File serverFile = new File(fileLocation);
-         
-         BufferedOutputStream stream = new BufferedOutputStream(
-                 new FileOutputStream(serverFile));
-         
-         
-         stream.write(bytes);
-         stream.close();
-         }
+		Student student;
+		try {
+			validateImage(file);
+			student = studentService.getStudent(deferral.getStudentId());
+			deferralService.submitProgrammeDeferral(deferral.getStudentId(), deferral.getProgrammeId(),
+					file.getBytes(), uploadDirectory());
+		} catch (FormUploadException | IllegalArgumentException e) {
+			model.addAttribute("message", "Creation of deferral failed. Check the selected programme and PDF.");
+			logger.warn("Programme deferral validation failed", e);
+			return "displayError";
+		} catch (IOException | DataAccessException e) {
+			model.addAttribute("message", "Creation of deferral failed. Please try again.");
+			logger.error("Programme deferral submission failed", e);
+			return "displayError";
 		}
-		catch (Exception e)
-		{
-			model.addAttribute("message", "Creation of deferral failed, "+e.getLocalizedMessage());
-			e.printStackTrace();
+		try {
+			mail.sendProgrammeDeferralMail(student.getFirstName() + " " + student.getLastName(),
+					student.getStudentId(), deferral.getProgrammeId());
+		} catch (MailException e) {
+			logger.error("Programme deferral committed, but the admissions email failed", e);
+			model.addAttribute("message", "Deferral saved, but the admissions notification could not be sent.");
 		}
-		}	else{
-				 model.addAttribute("message", "You failed to upload " + file.getOriginalFilename() + " because the file was empty.");
-				 return "displayError"; 
-			 }
-			} catch(FormUploadException e){
-				 model.addAttribute("message", "Creation of deferral failed. The system only supports PDFs.");
-				 return "displayError"; 
-			
-			}
-		
-		Date date = new java.util.Date();
-		List<Deferral> listDefferals = deferralService.listDeferralsByStudent(deferral.getStudentId());
-		model.addAttribute("deferrals", listDefferals);
-		model.addAttribute("now", date);
-		
-		//Send Email to CIT Admissions 
-		Student student=studentService.getStudent(deferral.getStudentId());
-		String studentName=student.getFirstName()+ " " + student.getLastName();
-		mail.sendProgrammeDeferralMail(studentName,student.getStudentId(),deferral.getProgrammeId());
-		
+		model.addAttribute("deferrals", deferralService.listDeferralsByStudent(deferral.getStudentId()));
+		model.addAttribute("now", new Date());
 		return "displayDeferrals";
-
 	}
 	
 
@@ -421,12 +342,22 @@ public class DeferralController {
 		model.addAttribute("deferral", deferralModify);
 		return "modifyDefForm";	} 
 	
-	@RequestMapping(value="/modify/id/{id}/approval/{approval}", method = RequestMethod.GET) 
-	public String modifyDeferral(@PathVariable int id, @PathVariable String approval,  ModelMap model) {			
+	@RequestMapping(value="/modify/id/{id}/decision", method = RequestMethod.POST)
+	public String decideDeferral(@PathVariable int id, @RequestParam("approval") String approval,
+			@RequestParam(value="rejectionReason", required=false) String rejectionReason,
+			Principal principal, ModelMap model) {
+		if (principal == null || !DeferralService.DECISION_LECTURER_ID.equals(principal.getName())) {
+			throw new AccessDeniedException("Only lecturer L001 may decide deferrals.");
+		}
 		try {
-			deferralService.decideDeferral(id, null, approval);
-		} catch (Exception e) {
-			model.addAttribute("message", "Deferral decision failed: " + e.getLocalizedMessage());
+			deferralService.decideDeferral(id, principal.getName(), approval, rejectionReason);
+		} catch (InvalidDeferralStateException e) {
+			model.addAttribute("message", "Deferral decision failed: " + e.getMessage());
+			model.addAttribute("deferrals", deferralService.listDeferrals());
+			return "displayDeferrals";
+		} catch (DataAccessException e) {
+			logger.error("Deferral decision failed", e);
+			model.addAttribute("message", "Deferral decision failed. Please try again.");
 			model.addAttribute("deferrals", deferralService.listDeferrals());
 			return "displayDeferrals";
 		}

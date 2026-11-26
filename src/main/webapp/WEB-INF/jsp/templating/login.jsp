@@ -9,7 +9,7 @@
 		<div class="msg">${msg}</div>
 	</c:if>
 		
-<form name="f" action="<c:url value='/SpringWebProject/j_spring_security_check'/>" method="POST">
+<form name="f" action="<c:url value='/j_spring_security_check'/>" method="POST">
 
   <div class="ui-field-contain">
     <label for="fullname">Username:</label>

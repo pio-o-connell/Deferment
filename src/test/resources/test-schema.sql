@@ -48,7 +48,9 @@ CREATE TABLE deferrals (
     Lect_ID VARCHAR(10) NOT NULL,
     Programme_ID VARCHAR(20) NOT NULL REFERENCES programme(Programme_ID) ON DELETE CASCADE,
     Module_ID VARCHAR(10) NOT NULL,
-    Approved VARCHAR_IGNORECASE(10) DEFAULT 'False' NOT NULL
+    Approved VARCHAR_IGNORECASE(10) DEFAULT 'False' NOT NULL,
+    Decision_Lect_ID VARCHAR(10),
+    Rejection_Reason VARCHAR(1000)
 );
 
 CREATE TABLE users (

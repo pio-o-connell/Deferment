@@ -1,19 +1,37 @@
 package com.defermentsystem.repository;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import javax.sql.DataSource;
 
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.springframework.aop.framework.Advised;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.TestExecutionListeners;
@@ -32,6 +50,9 @@ import com.github.springtestdbunit.annotation.DatabaseSetup;
 @TestExecutionListeners({ DependencyInjectionTestExecutionListener.class,
 		DbUnitTestExecutionListener.class })
 public class DeferralTransactionTest {
+
+	@Rule
+	public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
 	@Autowired
 	private ApplicationContext applicationContext;
@@ -98,6 +119,8 @@ public class DeferralTransactionTest {
 
 		assertEquals("False", new JdbcTemplate(dataSource).queryForObject(
 				"select Approved from deferrals where Def_ID=?", String.class, id));
+		assertNull(realDao.getDeferral(id).getDecisionLecturerId());
+		assertNull(realDao.getDeferral(id).getRejectionReason());
 	}
 
 	@Test
@@ -126,6 +149,147 @@ public class DeferralTransactionTest {
 
 		assertEquals("True", new JdbcTemplate(dataSource).queryForObject(
 				"select Approved from deferrals where Def_ID=?", String.class, id));
+	}
+
+	@Test
+	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
+	public void programmeSubmissionCommitsEveryRecordAndDocument() throws IOException {
+		DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl", DeferralServiceImpl.class);
+		Path directory = temporaryFolder.newFolder().toPath();
+		byte[] document = "test document".getBytes(StandardCharsets.UTF_8);
+		ArrayList<Integer> ids = service.submitProgrammeDeferral("R0020934", "KCLDC_Y4", document, directory);
+
+		assertEquals(2, ids.size());
+		for (Integer id : ids) {
+			assertEquals("R0020934", new JdbcTemplate(dataSource).queryForObject(
+					"select Student_ID from deferrals where Def_ID=?", String.class, id));
+			assertEquals("test document", new String(Files.readAllBytes(directory.resolve(id + ".pdf")), StandardCharsets.UTF_8));
+		}
+	}
+
+	@Test
+	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
+	public void documentFailureRollsBackProgrammeAndRemovesOnlyNewFiles() throws IOException {
+		DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl", DeferralServiceImpl.class);
+		final DeferralDAO realDao = applicationContext.getBean("deferralJdbcDaoSupport", DeferralDAO.class);
+		final Path directory = temporaryFolder.newFolder().toPath();
+		final ArrayList<Integer> generatedIds = new ArrayList<Integer>();
+		DeferralDAO dao = (DeferralDAO) Proxy.newProxyInstance(DeferralDAO.class.getClassLoader(),
+				new Class<?>[] { DeferralDAO.class }, new InvocationHandler() {
+					public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+						try {
+							Object result = method.invoke(realDao, args);
+							if ("createProgrammeDeferralGetId".equals(method.getName())) {
+								@SuppressWarnings("unchecked")
+								ArrayList<Integer> ids = (ArrayList<Integer>) result;
+								generatedIds.addAll(ids);
+								Files.write(directory.resolve(ids.get(1) + ".pdf"), "existing".getBytes(StandardCharsets.UTF_8));
+							}
+							return result;
+						} catch (InvocationTargetException e) {
+							throw e.getCause();
+						}
+					}
+				});
+		setServiceDao(service, dao);
+		try {
+			service.submitProgrammeDeferral("R0020934", "KCLDC_Y4",
+					"document".getBytes(StandardCharsets.UTF_8), directory);
+			fail("Expected a file collision");
+		} catch (IOException expected) {
+			assertEquals(2, generatedIds.size());
+		} finally {
+			setServiceDao(service, realDao);
+		}
+
+		assertEquals(Integer.valueOf(0), new JdbcTemplate(dataSource).queryForObject(
+				"select count(*) from deferrals where Student_ID=?", Integer.class, "R0020934"));
+		assertFalse(Files.exists(directory.resolve(generatedIds.get(0) + ".pdf")));
+		assertEquals("existing", new String(Files.readAllBytes(directory.resolve(generatedIds.get(1) + ".pdf")),
+				StandardCharsets.UTF_8));
+	}
+
+	@Test
+	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
+	public void invalidRegistrationDoesNotCreateSubmission() throws IOException {
+		DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl", DeferralServiceImpl.class);
+		Path directory = temporaryFolder.newFolder().toPath();
+		try {
+			service.submitModuleDeferral("R0004444", "COMP8016", 24248, new byte[] {1}, directory);
+			fail("Expected mismatched module rejection");
+		} catch (IllegalArgumentException expected) {
+			assertEquals(Integer.valueOf(0), new JdbcTemplate(dataSource).queryForObject(
+					"select count(*) from deferrals where Student_ID=?", Integer.class, "R0004444"));
+		}
+		try {
+			service.submitProgrammeDeferral("R0004444", "KCLDC_Y4", new byte[] {1}, directory);
+			fail("Expected missing registration rejection");
+		} catch (IllegalArgumentException expected) {
+			assertEquals(Integer.valueOf(0), new JdbcTemplate(dataSource).queryForObject(
+					"select count(*) from deferrals where Student_ID=?", Integer.class, "R0004444"));
+		}
+		assertEquals(0, directory.toFile().list().length);
+	}
+
+	@Test
+	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
+	public void onlyL001CanRejectAndOptionalReasonIsStored() {
+		DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl", DeferralServiceImpl.class);
+		DeferralDAO dao = applicationContext.getBean("deferralJdbcDaoSupport", DeferralDAO.class);
+		int id = dao.createDeferralGetId("R0020934", "L002", "KCLDC_Y4", "COMP8038");
+		try {
+			service.decideDeferral(id, "L002", "Rejected", "reason");
+			fail("Expected unauthorised decision rejection");
+		} catch (InvalidDeferralStateException expected) {
+			assertEquals("False", dao.getDeferral(id).getApproval());
+		}
+		service.decideDeferral(id, "L001", "Rejected", "  Further evidence needed  ");
+		assertEquals("Rejected", dao.getDeferral(id).getApproval());
+		assertEquals("L001", dao.getDeferral(id).getDecisionLecturerId());
+		assertEquals("Further evidence needed", dao.getDeferral(id).getRejectionReason());
+
+		int secondId = dao.createDeferralGetId("R0004444", "L001", "KCMSD_Y5", "COMP8040");
+		service.decideDeferral(secondId, "L001", "Rejected", "");
+		assertEquals(null, dao.getDeferral(secondId).getRejectionReason());
+		assertTrue(dao.getDeferral(secondId).getApproval().equals("Rejected"));
+	}
+
+	@Test
+	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
+	public void concurrentDecisionsCannotBothSucceed() throws Exception {
+		final DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl", DeferralServiceImpl.class);
+		DeferralDAO dao = applicationContext.getBean("deferralJdbcDaoSupport", DeferralDAO.class);
+		final int id = dao.createDeferralGetId("R0004444", "L001", "KCMSD_Y5", "COMP8040");
+		final CountDownLatch start = new CountDownLatch(1);
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			Future<Boolean> approval = executor.submit(decisionAttempt(service, id, "True", start));
+			Future<Boolean> rejection = executor.submit(decisionAttempt(service, id, "Rejected", start));
+			start.countDown();
+			boolean approved = approval.get(15, TimeUnit.SECONDS);
+			boolean rejected = rejection.get(15, TimeUnit.SECONDS);
+			assertTrue(approved != rejected);
+			assertEquals(approved ? "True" : "Rejected", dao.getDeferral(id).getApproval());
+			assertEquals("L001", dao.getDeferral(id).getDecisionLecturerId());
+		} finally {
+			executor.shutdownNow();
+			assertTrue(executor.awaitTermination(15, TimeUnit.SECONDS));
+		}
+	}
+
+	private Callable<Boolean> decisionAttempt(final DeferralServiceImpl service, final int id,
+			final String decision, final CountDownLatch start) {
+		return new Callable<Boolean>() {
+			public Boolean call() throws Exception {
+				start.await();
+				try {
+					service.decideDeferral(id, "L001", decision);
+					return true;
+				} catch (InvalidDeferralStateException | DataAccessException expected) {
+					return false;
+				}
+			}
+		};
 	}
 
 	private DeferralDAO failingDao(final DeferralDAO delegate, final int failOnCall) {

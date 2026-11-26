@@ -205,7 +205,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public int createDeferralGetId(String studentID, String lectID,
 			String progID, String moduleID) {
 		String SQL = "INSERT into deferrals (Student_ID, Lect_ID, Programme_ID,  Module_ID) values(?, ?, ?,?) ";
@@ -252,7 +252,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = true, propagation = Propagation.REQUIRED)
 	public Deferral getDeferral(int id) {
 		String SQL = "select * from deferrals where Def_ID = ?";
 		Deferral deferral = (Deferral) getJdbcTemplate().queryForObject(SQL, new Object[]{id}, new DeferralMapper());
@@ -324,9 +324,10 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@Override
 	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
-	public int updateDeferralStatusIfPending(int id, String approval, String lectId) {
-		String SQL = "update deferrals set Approved=? where Def_ID=? and Lect_ID=? and Approved='False'";
-		return getJdbcTemplate().update(SQL, new Object[] {approval, id, lectId});
+	public int updateDeferralStatusIfPending(int id, String approval, String lectId, String rejectionReason) {
+		String SQL = "update deferrals set Approved=?, Decision_Lect_ID=?, Rejection_Reason=? "
+				+ "where Def_ID=? and Approved='False'";
+		return getJdbcTemplate().update(SQL, new Object[] {approval, lectId, rejectionReason, id});
 	}
 	
 	@SuppressWarnings("unchecked")
@@ -341,11 +342,15 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 		 * Get this Programme and coordinator ID
 		 */
 		List<Programme> programmeList;
-		String SQL2 = "SELECT * from programme"
-				+ " JOIN registration on registration.Programme_ID=programme.Programme_ID  "
+		String SQL2 = "SELECT programme.* from programme"
+				+ " JOIN registration on registration.Programme_ID=programme.Programme_ID"
+				+ " JOIN modules on modules.CRN=registration.CRN"
 				+ " AND registration.Student_ID= ?"
-				+ " AND registration.CRN= ?";
-		programmeList = getJdbcTemplate().query(SQL2,new Object[] { studentId, crnNumber }, new ProgrammeMapper());
+				+ " AND registration.CRN= ? AND modules.Module_ID= ?";
+		programmeList = getJdbcTemplate().query(SQL2,new Object[] { studentId, crnNumber, moduleId }, new ProgrammeMapper());
+		if (programmeList.isEmpty()) {
+			throw new IllegalArgumentException("The selected module is not registered to this student.");
+		}
 		String programmeId = programmeList.get(0).getProgrammeId();
 		String lecturerId= programmeList.get(0).getCoordinatorId();
 
@@ -405,6 +410,9 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 				+ " AND registration.Student_ID=?"
 				+ " AND registration.Programme_ID=?";
 		studentModules = getJdbcTemplate().query(SQL,new Object[] { studentId, programmeId }, new ModuleMapper());
+		if (studentModules.isEmpty()) {
+			throw new IllegalArgumentException("No modules are registered for this student and programme.");
+		}
 
 		for (int i = 0; i < studentModules.size(); i++) {
 			int id=createModuleDeferralGetId(studentId,studentModules.get(i).getModuleId(), studentModules.get(i).getCrnNumber());

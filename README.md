@@ -101,6 +101,8 @@ The project remains a conventional Java 8 Spring MVC 4, Spring JDBC, JSP, JSTL, 
 - Admission notification email initiation
 - Deferral filtering by student, module, programme, or coordinator
 - Conditional approval/rejection decision updates
+- Decision lecturer and optional rejection reason on individual deferrals
+- Rollback cleanup for newly written supporting documents
 - CRUD workflows for students, lecturers, modules, and programmes
 - Shared JSP layout through Apache Tiles
 - Embedded Tomcat launch support
@@ -110,12 +112,11 @@ The project remains a conventional Java 8 Spring MVC 4, Spring JDBC, JSP, JSTL, 
 
 ### Outstanding or limited
 
-- Coordinated PDF/database rollback
-- After-commit email processing
-- Dedicated concurrent decision testing
-- Complete checked-exception rollback coverage
+- Crash-safe coordination of PDF files and database commits
+- Durable email retries
+- MySQL concurrency verification
 - Full administrator URL enforcement
-- A rejection-reason or decision-history schema
+- A separate decision-history schema
 - A document-reference database table
 - Stronger upload-content validation
 
@@ -287,14 +288,11 @@ The current implementation, represented by `DeferralController.displayModuleDefe
 1. Receive student, module, and CRN information.
 2. Resolve the module and validate that it corresponds to the supplied CRN.
 3. Resolve the student's registered programme and the programme coordinator.
-4. Insert the deferral record.
-5. Retrieve the generated `Def_ID`.
-6. Save the uploaded PDF using that generated ID.
-7. Retrieve student details and initiate an admissions email notification.
+4. Insert the deferral record and retrieve its generated `Def_ID`.
+5. Write the uploaded PDF using that ID within the service transaction.
+6. After the service transaction commits, initiate an admissions email notification.
 
-The module insert is protected by service-level and DAO-level transaction configuration. The PDF write and SMTP notification are currently external side effects performed after the service call and are not part of the database transaction.
-
-A database insert can therefore succeed before a later file-write or email failure. If the file write fails after an ID is assigned, the controller catches the exception but can still send email and return the deferral list. The record may have no valid document despite a success-shaped response. PDF/database coordination is **not currently atomic**.
+The service rolls back the database insert if writing the document fails. It registers rollback cleanup for files created by the submission and does not overwrite existing files. Database transactions do not make filesystem writes atomic: process crashes, unknown commit outcomes, or cleanup failures can still require manual reconciliation.
 
 ### Programme deferral submission
 
@@ -309,9 +307,9 @@ The current implementation, represented by `DeferralController.displayProgrammeD
 5. Save a copy of the supporting PDF for each generated ID.
 6. Initiate an admissions email notification.
 
-The controller calls `createProgrammeDeferralGetId(...)`, which iterates over registered modules and calls `createModuleDeferralGetId(...)` for individual inserts and generated IDs. The separate `createProgrammeDeferral(...)` method uses a JDBC batch insert and does not return IDs; it is the method exercised by the injected programme-submission rollback test. Both outer DAO methods use `REQUIRED` and join their service transaction. The internal call to `createModuleDeferralGetId(...)` runs within that existing transaction rather than going through the DAO proxy again.
+The controller calls `submitProgrammeDeferral(...)`. Its DAO retrieves all registered modules and inserts each row with a generated ID in one transaction. An empty registration set is rejected. If a file write fails, the transaction rolls back and the service attempts to delete files created by that submission. The separate `createProgrammeDeferral(...)` DAO method uses a batch insert and does not return IDs.
 
-The controller catches database and file exceptions in this flow but then attempts to send an email and returns the deferral list. Thus an error can result in a success-shaped response or notification. The existing transaction test does **not** prove successful programme submission, the controller's ID-returning path, or verification of every generated programme record. HSQLDB tests also cannot prove filesystem publication or SMTP delivery.
+An HSQLDB integration test checks successful creation of both records and files; another injects a file collision and verifies database rollback and cleanup without overwriting the existing file. These tests do not establish crash-safe storage or SMTP delivery.
 
 ### Approval and rejection
 
@@ -321,12 +319,11 @@ The controller catches database and file exceptions in this flow but then attemp
 
 `DeferralServiceImpl.decideDeferral(...)` implements:
 
-1. Validation of the requested decision.
-2. Retrieval of the deferral.
-3. Verification that the status is pending.
-4. Verification of the lecturer ID, when supplied.
-5. Conditional update to `True` or `Rejected`.
-6. Verification that exactly one row was updated.
+1. Require the authenticated decision maker to be `L001`, the current business rule.
+2. Validate the decision and optional rejection reason, and retrieve the deferral.
+3. Verify that the status is pending.
+4. Conditionally update the status to `True` or `Rejected`, recording the decision lecturer and optional rejection reason.
+5. Require exactly one updated row.
 
 Current statuses are:
 
@@ -336,18 +333,15 @@ Current statuses are:
 | `True` | Approved |
 | `Rejected` | Rejected |
 
-The update in `DeferralJdbcDaoSupport.updateDeferralStatusIfPending(...)` requires the row to remain pending and retain its stored lecturer ID. This conditional SQL guards against stale and conflicting updates at the database level. It does **not** establish the caller's identity.
+The controller obtains the authenticated username and accepts decisions only from `L001`, even when the deferral's programme coordinator is another lecturer. The service enforces the same rule. Decisions are submitted by POST with CSRF protection; the former state-changing GET routes have been removed.
 
-The current controller calls `decideDeferral(id, null, approval)`, so the optional lecturer ownership check is skipped for this route. Connecting the authenticated identity to an enforced ownership check is outstanding. In addition, `getDeferral(...)` uses `queryForObject`, which throws for a missing row before the service's null check can produce its intended business exception.
+The conditional SQL update requires the row still to be pending, so a stale decision cannot overwrite a completed one. A concurrent HSQLDB test checks that two competing decisions cannot both succeed; this is not proof of MySQL concurrency behaviour. A missing row is translated into a business exception.
 
-The separate `approveProgrammeDeferral(...)` service/DAO operation approves pending programme rows and deletes matching registrations in the same transaction. The individual `decideDeferral(...)` route only updates the selected status; it does not call that programme approval operation or remove registrations.
-
-This implementation is **implemented**, but it does not establish that a complete concurrent approval/rejection test suite has been run.
+An individual decision updates only the selected deferral; it does not remove programme registrations. Legacy bulk approval DAO methods remain but are not exposed through the decision service or controller.
 
 The schema has no:
 
 - Separate decision-history or audit table
-- Rejection-reason field
 - Document-reference table
 
 ---
@@ -381,10 +375,10 @@ Current relevant usage includes:
 
 - Module and programme submission operations: `REQUIRED`
 - `updateDeferralStatusIfPending(...)`: `REQUIRED`
-- `createDeferralGetId(...)`: `REQUIRES_NEW`
+- `createDeferralGetId(...)` and `getDeferral(...)`: `REQUIRED`
 - Many list, lookup, delete, and legacy update methods: `REQUIRES_NEW`
 
-`REQUIRES_NEW` is independent transaction behaviour. In particular, `createDeferralGetId(...)` can commit independently if it is called inside a larger operation. All DAO propagation statements must therefore be reviewed before claiming that every larger service workflow is atomic.
+`REQUIRES_NEW` is independent transaction behaviour. All DAO propagation statements must therefore be reviewed before claiming that every larger service workflow is atomic.
 
 ### Transaction lifecycle
 
@@ -398,8 +392,8 @@ flowchart LR
     DAO --> JdbcTemplate[JdbcTemplate]
     JdbcTemplate --> Database[(Relational Database)]
     Manager -. manages database connection .-> Database
-    Controller -. external file write .-> PDF[Filesystem PDF storage]
-    Controller -. external notification .-> SMTP[SMTP email]
+    Service -. file write and rollback cleanup .-> PDF[Filesystem PDF storage]
+    Controller -. email after service commit .-> SMTP[SMTP email]
 ```
 
 The browser/controller layer receives the request and performs the validation present in each flow. The controller calls the service proxy, which establishes the Spring transaction before invoking the service method. The service coordinates the operation; the DAO and `JdbcTemplate` perform database operations. When the transaction boundary is reached, a successful operation commits and an applicable exception causes rollback. DAO methods using `REQUIRES_NEW` instead run in an independent transaction.
@@ -433,7 +427,7 @@ Spring and the relational database provide or help to provide:
 - **Isolation:** concurrent transactions are isolated according to the database isolation level and locking behaviour.
 - **Durability:** committed database changes persist according to the relational database engine.
 
-The HSQLDB integration tests demonstrate selected service commit and rollback behaviour within the test environment. They do not demonstrate every workflow, MySQL/HSQLDB concurrency scenario, filesystem scenario, or email scenario.
+The HSQLDB integration tests demonstrate selected service commit, rollback, filesystem-cleanup and concurrent-decision behaviour within the test environment. They do not demonstrate every workflow, MySQL concurrency scenario, crash scenario, or actual SMTP delivery.
 
 ### Business-process limitations
 
@@ -462,17 +456,13 @@ resources/form/uploadedForms/<Def_ID>.pdf
 
 One generated PDF filename is used for a module deferral. Programme deferrals use one PDF for each generated deferral ID. The controller checks the submitted multipart content type for `application/pdf`; it does not verify PDF contents.
 
-The current controller writes files directly after database submission. It does not stage documents, publish only after commit verification, or perform compensating cleanup for every database failure.
-
-An existing database record is therefore capable of being created while a required document is missing or while a later file operation fails.
+The transactional service creates files without overwriting existing files and registers cleanup for files created by the submission if the transaction rolls back. Cleanup failures are logged. Files are written before commit and can be visible before it; a process crash, unknown transaction outcome, or failed cleanup can still leave files and database records inconsistent. The filesystem is not a transactional resource.
 
 ### Email notification
 
 The controller calls `Mail.sendModuleDeferralMail(...)` or `Mail.sendProgrammeDeferralMail(...)` after submission. Email delivery is an external SMTP side effect.
 
-It is not coordinated with the database transaction and is not sent through a verified after-commit mechanism.
-
-Email delivery failure must not reverse an already committed database transaction. It should instead be logged and handled separately.
+The controller sends email only after the transactional submission service returns successfully. SMTP remains outside the transaction: delivery failure is logged and shown as a warning without reversing the committed submission. There is no durable outbox or retry mechanism.
 
 ### Outstanding improvements
 
@@ -480,13 +470,11 @@ The following improvements are **not implemented**:
 
 - Stage uploaded documents before final placement
 - Prevent final publication when database work fails; coordinate final placement after successful commit
-- Clean temporary files after database or file failure
-- Prevent or clean up orphaned PDF files
-- Send email only after verified commit
-- Log file and email failures and handle SMTP delivery failure without reversing committed database changes
+- Recover from process crashes or failed rollback cleanup
+- Provide durable email delivery and retries
 - Store document metadata in a document-reference table
 
-These filesystem and email operations cannot be proven transactional by an HSQLDB database rollback test alone.
+An HSQLDB test covers a file collision and rollback cleanup; it cannot prove crash recovery or SMTP delivery.
 
 ---
 
@@ -494,30 +482,34 @@ These filesystem and email operations cannot be proven transactional by an HSQLD
 
 ## 11. Transaction Test Matrix
 
-`DeferralTransactionTest` uses the real proxied Spring service, transaction manager, and HSQLDB database writes. It verifies database state through separate `JdbcTemplate` queries after service calls, without a test-level transaction. On 26 November 2026, `mvn '-Dtest=DeferralTransactionTest' test` ran four tests with zero failures, errors, or skips. This result is limited to that run and test environment.
+`DeferralTransactionTest` uses the real proxied Spring service, transaction manager, HSQLDB database writes and temporary files. It verifies database state through separate `JdbcTemplate` queries after service calls, without a test-level transaction. Test results are limited to the environment in which they run.
 
 | Test | Operation and failure | Verified result | Status |
 |---|---|---|---|
 | `successfulSubmissionAndApprovalCommit()` | Creates a module deferral, then approves it; no injected failure | Commit: student ID is stored and status becomes `True` | Implemented and tested |
 | `laterSubmissionFailureRollsBackEarlierInsert()` | Invokes the real batch-insert programme DAO, then injects an exception | Rollback: no deferrals remain for the test student | Implemented and tested |
 | `statusUpdateFailureRollsBackDecision()` | Performs a real status update, then injects an exception | Rollback: status remains `False` | Implemented and tested |
-| `duplicateDecisionAndWrongLecturerAreRejected()` | Approves a deferral, then attempts further decisions including one with another lecturer ID | Validation: both later calls throw and status stays `True`; neither establishes that a wrong lecturer is rejected for a pending deferral | Implemented and tested; ownership-specific test outstanding |
+| `duplicateDecisionAndWrongLecturerAreRejected()` | Approves a deferral, then attempts further decisions including one with another lecturer ID | Validation: both later calls throw and status stays `True` | Implemented and tested; pending-record authorisation is covered separately below |
+| `programmeSubmissionCommitsEveryRecordAndDocument()` | Submits a programme with two registered modules | Both generated records and their documents exist | Implemented and tested |
+| `documentFailureRollsBackProgrammeAndRemovesOnlyNewFiles()` | A later generated document collides with an existing file | Database rows roll back, the new file is removed, and the existing file remains unchanged | Implemented and tested |
+| `invalidRegistrationDoesNotCreateSubmission()` | Submits a mismatched module or a programme with no registrations | No deferrals or documents are created | Implemented and tested |
+| `onlyL001CanRejectAndOptionalReasonIsStored()` | Attempts a pending decision as another lecturer, then rejects as L001 | Unauthorised decision is rejected; lecturer and optional reason are stored | Implemented and tested |
+| `concurrentDecisionsCannotBothSucceed()` | Competing approval and rejection on HSQLDB | Exactly one succeeds and its status and lecturer are stored | Implemented and tested on HSQLDB |
 
 ### Outstanding test coverage
 
 | Capability | Status |
 |---|---|
-| Successful programme submission | Implemented functionality; dedicated test outstanding |
-| Verification of all generated programme deferral IDs and records | Outstanding |
-| Checked-exception rollback | Implementation is configured; dedicated test outstanding |
-| Nonexistent deferral decision | Missing-row DAO exception occurs before the intended service null check; dedicated test and consistent handling outstanding |
-| Wrong lecturer deciding a pending deferral | Service guard exists for a non-null lecturer ID; dedicated test and controller enforcement outstanding |
-| Dedicated rejection success test | Outstanding |
+| Successful programme submission and generated records | Tested for a two-module programme |
+| Checked-exception rollback | File-collision `IOException` rollback tested; other checked failures not exhaustively tested |
+| Nonexistent deferral decision | Missing row is translated to a business exception; dedicated test outstanding |
+| Wrong lecturer deciding a pending deferral | L001-only policy tested at service and controller levels |
+| Dedicated rejection success test | Optional reason and no-reason rejection tested |
 | Rejection failure after an earlier database write | Outstanding |
-| Concurrent approval/rejection attempts | Outstanding |
-| Concurrent duplicate decisions | Outstanding |
-| Document persistence success/failure | Out of database transaction scope; dedicated integration and filesystem tests outstanding |
-| Email delivery success/failure | Not transactionally implemented; dedicated test outstanding |
+| Concurrent approval/rejection attempts | Tested on HSQLDB; MySQL-specific verification outstanding |
+| Concurrent duplicate decisions | Dedicated same-decision test outstanding |
+| Document persistence success/failure | Programme success and collision/rollback tested; crash recovery outstanding |
+| Email delivery success/failure | Controller failure handling tested with a stub; actual SMTP delivery and durable retry outstanding |
 
 ### Original acceptance-case reference
 
@@ -525,15 +517,15 @@ The original README grouped the desired scenarios under the labels below. These 
 
 | Cases | Acceptance goal | Current evidence or gap |
 |---|---|---|
-| S1 | Successful module and programme submissions commit their records | Module submission tested; successful programme submission test outstanding |
-| S2-S3 | A failure after a submission write rolls back earlier writes | Batch programme DAO failure tested; other submission paths need dedicated coverage |
+| S1 | Successful module and programme submissions commit their records | Module database submission and programme submission with documents tested |
+| S2-S3 | A failure after a submission write rolls back earlier writes | Batch DAO failure and programme document-collision rollback tested |
 | S4 | A later document-reference write failure rolls back earlier writes | Not applicable to the current schema: no document-reference table |
-| S5 | A checked business exception rolls back submission | Configured on selected service methods; dedicated test outstanding |
+| S5 | A checked exception rolls back submission | Document-collision `IOException` tested |
 | A1 | Successful approval commits the decision | Module deferral approval tested |
 | A2-A3 | Failure during or after a status write rolls back the decision | Injected failure after a status update tested |
-| A4 | A decision on a missing deferral makes no changes | Dedicated test outstanding; DAO currently throws before the service null check |
-| A5-A6 | Duplicate or conflicting decisions do not change an already-decided record | Sequential duplicate attempts tested; dedicated concurrent conflict testing outstanding |
-| R1-R6 | Rejection succeeds or rolls back fully on staged failures | Rejection implemented; dedicated success and failure tests outstanding |
+| A4 | A decision on a missing deferral makes no changes | Missing-row exception translated; dedicated test outstanding |
+| A5-A6 | Duplicate or conflicting decisions do not change an already-decided record | Sequential and concurrent conflicting attempts tested on HSQLDB |
+| R1-R6 | Rejection succeeds or rolls back fully on staged failures | Rejection success tested; dedicated rejection failure injection outstanding |
 | Admin | Failure after an earlier write in a multi-record administrator operation rolls back all writes | Requires an identified operation and a dedicated test |
 
 Test-level `@Transactional` must not conceal the service proxy's commit or rollback behaviour. Independent database verification is important because it demonstrates that an operation really committed or rolled back in the database rather than only returning a method result or retaining test-runner transaction state.
@@ -550,7 +542,7 @@ Service methods that are mutation workflows use `rollbackFor = Exception.class` 
 
 Controllers should catch only appropriate request/business exceptions, add diagnostic information to the model or logs, avoid exposing database details, and never display success after rollback.
 
-The current submission controller catches broad exceptions and writes files directly. A module file failure after insertion can still lead to email and the list view; programme database or file failures are also caught before the email/list path. Fixing those success-shaped responses and coordinating database and filesystem failures remain outstanding. Error messages can include exception details and need review before production use.
+Submission validation, database and file errors return an error view and do not send the admissions notification. SMTP failure after commit is logged and shown as a warning; the committed deferral is not rolled back. Rollback cleanup is best effort, not a substitute for transactional filesystem storage.
 
 ---
 
@@ -569,13 +561,13 @@ The current submission controller catches broad exceptions and writes files dire
 | Service-level transactions | Implemented for selected workflows |
 | Conditional decision updates | Implemented |
 | Approval and rejection states | Implemented |
-| Lecturer ownership enforcement on the decision route | Outstanding; the controller passes `null` |
+| Decision authorisation | Only authenticated `L001` can decide; this is a fixed policy, not coordinator-based ownership |
 | Failure-injection rollback tests | Implemented for selected workflows |
-| Dedicated concurrency tests | Outstanding |
-| Complete checked-exception rollback tests | Outstanding |
-| Atomic PDF/database coordination | Outstanding |
-| Reliable after-commit email processing | Outstanding |
-| Rejection-reason persistence | Not implemented |
+| Dedicated concurrency tests | Conflicting decisions tested on HSQLDB; MySQL testing outstanding |
+| Checked-exception rollback tests | Document-collision rollback tested |
+| Atomic PDF/database coordination | Not fully atomic; rollback cleanup implemented |
+| Email processing | Sent after service commit; durable retries outstanding |
+| Rejection-reason persistence | Optional reason stored on the deferral |
 | Decision-history audit trail | Not implemented |
 | Separate document-reference table | Not implemented |
 | Full administrator URL enforcement | Outstanding |
@@ -588,11 +580,13 @@ The current submission controller catches broad exceptions and writes files dire
 
 Run `DatabaseSetup.sql` to create the MySQL schema.
 
+For an existing MySQL or PostgreSQL database, back it up and apply `add-deferral-decision-details.sql` **once** before running the updated application. It adds nullable `Decision_Lect_ID` and `Rejection_Reason` columns; existing decisions remain without recorded details. Do not apply it to a new database already created with the updated schema. The migration is not run automatically.
+
 The principal tables are:
 
 | Table | Responsibility |
 |---|---|
-| `deferrals` | Deferral request, student, lecturer, programme, module, and status |
+| `deferrals` | Deferral request, coordinator, module, status, decision lecturer, and optional rejection reason |
 | `student` | Student records |
 | `lecturer` | Lecturer records |
 | `modules` | Module and CRN information |
@@ -742,12 +736,19 @@ DAO integration tests create their in-memory HSQLDB tables from `src/test/resour
 mvn "-Dtest=*Transaction*Test" test
 ```
 
-This runs `DeferralTransactionTest`, which contains four methods:
+This runs `DeferralTransactionTest`, including:
 
 - `successfulSubmissionAndApprovalCommit`
 - `laterSubmissionFailureRollsBackEarlierInsert`
 - `statusUpdateFailureRollsBackDecision`
 - `duplicateDecisionAndWrongLecturerAreRejected`
+- `programmeSubmissionCommitsEveryRecordAndDocument`
+- `documentFailureRollsBackProgrammeAndRemovesOnlyNewFiles`
+- `invalidRegistrationDoesNotCreateSubmission`
+- `onlyL001CanRejectAndOptionalReasonIsStored`
+- `concurrentDecisionsCannotBothSucceed`
+
+`DeferralControllerTest` covers failure handling and MVC routes; `DeferralDecisionSecurityTest` checks the decision filter chain and CSRF token handling.
 
 ### Static configuration test
 
@@ -815,9 +816,11 @@ Authentication and authorisation are separate concerns:
 
 The intended `/admin/**` administrator restriction is **not currently active**: its `intercept-url` entry in `spring-security.xml` is commented out.
 
-There is no active URL rule restricting `/admin/**` to `ROLE_ADMIN` or requiring authentication for those paths. The login mechanism alone must not be treated as access protection; full administrator URL enforcement and controller-level ownership checks are outstanding.
+The `/admin/deferral/modify/**` decision paths require authentication, and the controller and service limit decisions to `L001`. This is a fixed decision-maker rule, not coordinator-based ownership.
 
-Form submissions participate in Spring Security CSRF protection under `auto-config="true"`.
+The other `/admin/**` paths have no active rule requiring authentication or `ROLE_ADMIN`. The login mechanism alone must not be treated as access protection; full administrator URL enforcement remains outstanding.
+
+CSRF protection is explicitly enabled for `/admin/deferral/modify/**` only. It is not enabled for the default security chain; other forms and state-changing routes still need security review.
 
 ### Security limitations and outstanding work
 
@@ -860,12 +863,11 @@ The existing JSP, JSTL, Apache Tiles, Spring MVC, Spring JDBC, and embedded WAR 
 
 ## 21. Known Limitations
 
-- Some legacy DAO methods use `REQUIRES_NEW`, including `createDeferralGetId(...)`.
+- Some legacy DAO methods use `REQUIRES_NEW`.
 - Several unrelated CRUD DAO methods may commit independently.
-- PDF and SMTP side effects are not coordinated with database commits.
+- PDF rollback cleanup is best effort and not crash-safe; SMTP delivery is not durable.
 - The `/admin/**` role restriction is not active.
-- The decision controller passes no lecturer identity, bypassing its service's optional ownership check.
-- Submission error handling can send notifications or return a success-shaped view after a database or file failure.
+- Decision authorisation is fixed to `L001`, not configurable or coordinator-based.
 - The README and tests should not be used to claim complete MySQL concurrency verification.
 - Selenium/UI test dependencies require a running application and dedicated database.
 - Older Java/Spring/JDBC/Tomcat versions are in use.
