@@ -1,94 +1,163 @@
 # Deferment System
 
-A Spring MVC web application for managing academic deferral requests. Authorised users can submit, review, approve, or reject deferrals for individual modules or entire programmes. Supporting entities — students, lecturers, programmes, modules, semesters, and registrations — are all managed through the same application.
+A server-rendered Java/Spring MVC application for managing academic deferral requests. Authorised users can submit deferrals for individual modules or complete programmes, and review, approve, or reject them.
+
+The application also manages supporting data for students, lecturers, programmes, modules, semesters, and registrations.
+
+This document describes the **current local implementation**. It distinguishes implemented behaviour from tested behaviour, outstanding work, and explicitly excluded functionality. See [Business Workflows](#7-business-workflows), [Transaction Test Matrix](#11-transaction-test-matrix), and [Security](#19-security) for important limitations.
+
+## Contents
+
+- [Deferment System](#deferment-system)
+  - [Contents](#contents)
+  - [1. Project Overview](#1-project-overview)
+  - [2. Features](#2-features)
+    - [Implemented](#implemented)
+    - [Outstanding or limited](#outstanding-or-limited)
+  - [3. Architecture](#3-architecture)
+  - [4. Spring Root/Child Contexts](#4-spring-rootchild-contexts)
+    - [Root `WebApplicationContext`](#root-webapplicationcontext)
+    - [Why Spring Security remains in the Root context](#why-spring-security-remains-in-the-root-context)
+    - [MVC child `WebApplicationContext`](#mvc-child-webapplicationcontext)
+    - [Dependency-injection lifecycle](#dependency-injection-lifecycle)
+  - [5. Configuration Responsibilities](#5-configuration-responsibilities)
+  - [6. Package Structure](#6-package-structure)
+  - [7. Business Workflows](#7-business-workflows)
+    - [Module deferral submission](#module-deferral-submission)
+    - [Programme deferral submission](#programme-deferral-submission)
+    - [Approval and rejection](#approval-and-rejection)
+  - [8. Transaction Management](#8-transaction-management)
+    - [Propagation used by deferral repositories](#propagation-used-by-deferral-repositories)
+    - [Transaction lifecycle](#transaction-lifecycle)
+    - [Administrator operations: intended transaction policy](#administrator-operations-intended-transaction-policy)
+  - [9. Transaction Guarantees](#9-transaction-guarantees)
+    - [Database transaction guarantees](#database-transaction-guarantees)
+    - [Business-process limitations](#business-process-limitations)
+  - [10. Filesystem and Email Operations](#10-filesystem-and-email-operations)
+    - [Supporting PDF storage](#supporting-pdf-storage)
+    - [Email notification](#email-notification)
+    - [Outstanding improvements](#outstanding-improvements)
+  - [11. Transaction Test Matrix](#11-transaction-test-matrix)
+    - [Outstanding test coverage](#outstanding-test-coverage)
+    - [Original acceptance-case reference](#original-acceptance-case-reference)
+  - [12. Failure Handling](#12-failure-handling)
+  - [13. Implemented vs Outstanding Functionality](#13-implemented-vs-outstanding-functionality)
+  - [14. Database](#14-database)
+    - [Deferral status](#deferral-status)
+  - [15. Technologies](#15-technologies)
+  - [16. Configuration](#16-configuration)
+    - [Local database](#local-database)
+    - [PostgreSQL](#postgresql)
+  - [17. Building and Running](#17-building-and-running)
+  - [18. Testing](#18-testing)
+    - [Maven package](#maven-package)
+    - [DAO integration tests](#dao-integration-tests)
+    - [Transaction integration tests](#transaction-integration-tests)
+    - [Static configuration test](#static-configuration-test)
+    - [Spring application-context diagnostic](#spring-application-context-diagnostic)
+    - [Combined configuration checker](#combined-configuration-checker)
+    - [Selenium UI tests](#selenium-ui-tests)
+    - [Logging](#logging)
+  - [19. Security](#19-security)
+    - [Authentication and authorisation](#authentication-and-authorisation)
+    - [Security limitations and outstanding work](#security-limitations-and-outstanding-work)
+  - [20. Not Implemented / Out of Scope](#20-not-implemented--out-of-scope)
+  - [21. Known Limitations](#21-known-limitations)
+  - [22. Project Structure](#22-project-structure)
+  - [23. Author](#23-author)
+  - [Repository](#repository)
 
 ---
 
-## Features
+## 1. Project Overview
 
-- Form-based login with JDBC-backed Spring Security
-- Create module or programme deferrals through guided multi-step flows
-- Upload a supporting PDF document for each deferral request
-- List and filter deferrals by student, module, programme, or coordinator
-- Approve or reject individual deferral records
-- Download the uploaded deferral form by ID
-- Full CRUD management for students, lecturers, modules, and programmes
-- Email notifications sent to admissions on deferral submission
-- Shared page layouts via Apache Tiles (header/footer on every page)
+The application provides:
+
+- JDBC-backed Spring Security form login
+- Module deferral submission
+- Programme deferral submission
+- PDF supporting-document upload
+- Deferral listing and filtering
+- Approval and rejection of pending deferrals
+- Student, lecturer, module, and programme administration
+- Admissions email notifications
+- JSP views composed with Apache Tiles
+
+The project remains a conventional Java 8 Spring MVC 4, Spring JDBC, JSP, JSTL, and Apache Tiles application. It is not a Spring Boot, REST, JPA, SPA, or microservices application.
 
 ---
 
-## Architecture
+<a id="features"></a>
 
-The application uses two Spring `WebApplicationContext` instances: a shared Root context and a request-handling MVC Child context.
+## 2. Features
 
-### Root WebApplicationContext
+### Implemented
 
-The Root context is the shared application infrastructure. It is configured by `root-context.xml` and `spring-security.xml` and contains:
+- Form-based authentication through the `users` and `user_roles` tables
+- Student and module selection for module deferrals
+- Student and programme selection for programme deferrals
+- Supporting PDF upload
+- Download of an uploaded deferral form by ID
+- Admission notification email initiation
+- Deferral filtering by student, module, programme, or coordinator
+- Conditional approval/rejection decision updates
+- CRUD workflows for students, lecturers, modules, and programmes
+- Shared JSP layout through Apache Tiles
+- Embedded Tomcat launch support
+- HSQLDB-based DAO and transaction integration testing
+- Selenium browser-test classes
+- Spring Root/child context diagnostics
 
-- The `DataSource`
-- The transaction manager
-- `TransactionTemplate`
-- `JavaMailSender`
-- The `Mail` component
-- Repository/DAO beans
-- Service beans
-- Spring Security configuration
+### Outstanding or limited
 
-The Root context scans only `com.defermentsystem.service` and `com.defermentsystem.repository`. It does not scan all application packages or depend on MVC controllers.
+- Coordinated PDF/database rollback
+- After-commit email processing
+- Dedicated concurrent decision testing
+- Complete checked-exception rollback coverage
+- Full administrator URL enforcement
+- A rejection-reason or decision-history schema
+- A document-reference database table
+- Stronger upload-content validation
 
-### MVC Child WebApplicationContext
+---
 
-The Child context is created by the `DispatcherServlet` and is configured by `mvc-dispatcher-servlet.xml`. It contains:
+<a id="architecture"></a>
 
-- Spring MVC controllers
-- MVC annotation handling
-- Validation
-- View resolution
-- Apache Tiles configuration
-- Multipart request handling
-- Static resource handling
+## 3. Architecture
 
-The Child context scans only `com.defermentsystem.controllers`.
-
-### Parent–Child bean visibility
-
-The Root context is the Parent and the `DispatcherServlet` MVC context is the Child:
-
-- The Child can access beans defined in the Parent.
-- The Parent cannot access beans defined in the Child.
-- Controllers can therefore inject services from the Root context.
-- Services can inject repositories/DAOs from the Root context.
-- The Root context should not depend on MVC controllers.
-
-Keeping services and repositories in the Root context and controllers in the Child prevents broad component scanning from creating duplicate service and repository instances in both contexts.
+The application uses two Spring `WebApplicationContext` instances:
 
 ```mermaid
 flowchart LR
     HTTP[HTTP request] --> Filter[Spring Security filter]
 
-    subgraph Root["Root WebApplicationContext (Parent)"]
+    subgraph Root["Root WebApplicationContext / Parent"]
         Security[Spring Security]
-        Service[Service bean]
-        Repository[Repository / DAO bean]
         DataSource[DataSource]
-        Database[(Database)]
+        TransactionManager[DataSourceTransactionManager]
+        Service[Service beans]
+        Repository[Repository / DAO beans]
+        Mail[JavaMailSender / Mail]
+        Database[(Relational database)]
 
         Security -. uses .-> DataSource
         Service --> Repository
         Repository --> DataSource
+        TransactionManager --> DataSource
         DataSource --> Database
     end
 
-    subgraph Child["MVC WebApplicationContext (Child)"]
+    subgraph Child["MVC WebApplicationContext / DispatcherServlet Child"]
         Dispatcher[DispatcherServlet]
-        Controller[Controller]
+        Controller[Controllers]
+        Validation[Validation]
         ModelAndView[ModelAndView]
-        View[Tiles/JSP view resolution]
+        Tiles[Apache Tiles views]
 
         Dispatcher --> Controller
+        Controller --> Validation
         Controller --> ModelAndView
-        ModelAndView --> View
+        ModelAndView -->|resolves| Tiles
     end
 
     Filter --> Security
@@ -97,528 +166,756 @@ flowchart LR
     Controller -. injects and calls .-> Service
 ```
 
-The MVC flow resolves the returned `ModelAndView` through Apache Tiles and ultimately renders the configured JSP view.
+![Spring MVC request flow, application contexts and beans](./Architecture-contexts-and-beans.png)
 
-### Configuration responsibilities
 
-| File | Responsibility |
-|---|---|
-| `root-context.xml` | Root context infrastructure, service/repository scanning, DataSource, transaction configuration and Mail |
-| `spring-security.xml` | Root context security configuration and JDBC authentication |
-| `mvc-dispatcher-servlet.xml` | MVC Child context, controller scanning, annotation handling, validation, view resolution, Tiles and multipart configuration |
-| `repository-context.xml` | Classpath configuration for repository tests and the `App` command-line entry point |
+`diagnostic-results.png` is a pre-refactor baseline showing the original context-registration problem, not evidence of the current configuration. See the [context diagnostic](#spring-application-context-diagnostic) for the current checks.
 
-![Proposed and implemented Spring application-context separation](./defrment-sytem-image.png)
+The MVC flow resolves a returned `ModelAndView` through Apache Tiles and renders the configured JSP view.
 
-`diagnostic-results.png` is retained as a **pre-refactor baseline**. It records the original context-registration problem; it is not evidence of the current post-refactor result. The current configuration is checked by `WebApplicationContextDiagnosticTest` (see [Testing](#testing)).
+---
 
-In `web.xml`, `ContextLoaderListener` loads the Root context. The `DispatcherServlet` is named `mvc-dispatcher`, so it automatically looks for `/WEB-INF/mvc-dispatcher-servlet.xml` as its MVC Child context.
+## 4. Spring Root/Child Contexts
 
-`web.xml` loads `/WEB-INF/root-context.xml` and `/WEB-INF/spring-security.xml` into the Root context. The MVC file is loaded only by the `mvc-dispatcher` Child context, keeping controllers and MVC infrastructure out of the Root.
+### Root `WebApplicationContext`
+
+Loaded by `ContextLoaderListener` from `root-context.xml` and `spring-security.xml`, the Root context contains:
+
+- `DataSource`
+- `DataSourceTransactionManager`
+- `TransactionTemplate`
+- JavaMail infrastructure
+- The explicitly registered `com.defermentsystem.domain.Mail` bean
+- Repository/DAO beans
+- Service beans
+- Spring Security authentication and filter-chain beans
+
+<a id="component-scanning"></a>
+
+The Root context scans:
+
+- `com.defermentsystem.service`
+- `com.defermentsystem.repository`
+
+It does not scan controller packages.
 
 ### Why Spring Security remains in the Root context
 
-`DelegatingFilterProxy` looks up the `springSecurityFilterChain` bean in the Root `WebApplicationContext` by default. The JDBC authentication configuration also requires access to the Root context's `dataSource` bean. Therefore, `spring-security.xml` remains in the Root context.
+`DelegatingFilterProxy` resolves `springSecurityFilterChain` in the Root context by default. JDBC authentication also needs the Root context's `dataSource`, so `spring-security.xml` is loaded there.
 
-### Component scanning
+### MVC child `WebApplicationContext`
 
-- `root-context.xml` scans only:
-  - `com.defermentsystem.service`
-  - `com.defermentsystem.repository`
-- `root-context.xml` explicitly registers the `com.defermentsystem.domain.Mail` bean.
-- `mvc-dispatcher-servlet.xml` scans only:
-  - `com.defermentsystem.controllers`
+The `mvc-dispatcher` `DispatcherServlet` loads `mvc-dispatcher-servlet.xml` and creates the MVC child context. It contains:
 
-### MVC annotation configuration
+- Spring MVC controllers
+- MVC annotation handling
+- Bean validation
+- Apache Tiles configuration
+- Multipart upload handling
+- Static resource handling
 
-The MVC Child context uses one annotation-driven configuration, with the validator explicitly assigned:
+The child context scans only `com.defermentsystem.controllers`.
 
-```xml
-<mvc:annotation-driven validator="validator" />
-```
+<a id="parentchild-bean-visibility"></a>
 
-A `LocalValidatorFactoryBean` is defined in the MVC Child context:
+The child may access inherited beans from the parent. The parent cannot access child beans. Controllers therefore inject services from the parent, and services inject repositories from the parent.
 
-```xml
-<bean id="validator"
-      class="org.springframework.validation.beanvalidation.LocalValidatorFactoryBean" />
-```
-
-The duplicate plain `<mvc:annotation-driven/>` declaration has been removed; the validator is configured once through the explicit validator attribute.
+Restricting each context's component scan prevents broad scanning from creating duplicate service and repository instances in both contexts. The Root context should not depend on MVC controllers.
 
 ### Dependency-injection lifecycle
 
-The contexts work together in this order:
-
 1. The Root context creates the `DataSource`.
-2. The Root context creates repository/DAO beans and injects the `DataSource`.
-3. The Root context creates service beans and injects their repository dependencies.
-4. The `DispatcherServlet` creates the MVC Child context.
-5. The Child context creates controllers.
-6. Controllers inject and use service beans from the Parent context.
+2. The Root context creates repositories and injects their `DataSource`.
+3. The Root context creates services and injects their repositories.
+4. The `DispatcherServlet` creates the MVC child context and its controllers.
+5. Controllers inject services inherited from the Root context.
 
-`@Autowired` is used for Spring-managed bean dependencies such as repository-to-service or service-to-repository relationships and controller-to-service relationships. Ordinary method parameters, including controller request parameters, do not need `@Autowired`.
+`@Autowired` supplies Spring-managed dependencies, such as a service's repository or a controller's service. Ordinary method parameters, including request parameters, do not require `@Autowired`.
 
-### Packages
+---
+
+## 5. Configuration Responsibilities
+
+| File | Responsibility |
+|---|---|
+| `src/main/webapp/WEB-INF/root-context.xml` | Root infrastructure, component scanning, database configuration, transactions, mail |
+| `src/main/webapp/WEB-INF/spring-security.xml` | JDBC authentication, Spring Security filter chain |
+| `src/main/webapp/WEB-INF/mvc-dispatcher-servlet.xml` | Controllers, MVC validation, Tiles, multipart handling, static resources |
+| `src/main/webapp/WEB-INF/web.xml` | Root context listener, DispatcherServlet, Spring Security filter |
+| `src/main/resources/repository-context.xml` | Repository test and command-line `App` context |
+| `src/main/webapp/WEB-INF/tiles.xml` | Server-rendered JSP view definitions |
+
+<a id="mvc-annotation-configuration"></a>
+
+`mvc:annotation-driven` explicitly uses the `LocalValidatorFactoryBean` named `validator`.
+
+The MVC child has one annotation-driven declaration; the duplicate plain declaration was removed:
+
+```xml
+<mvc:annotation-driven validator="validator"/>
+<bean id="validator" class="org.springframework.validation.beanvalidation.LocalValidatorFactoryBean"/>
+```
+
+---
+
+<a id="packages"></a>
+
+## 6. Package Structure
 
 | Package | Responsibility |
 |---|---|
-| `com.defermentsystem.controllers` | Spring MVC controllers and the embedded Tomcat launcher |
-| `com.defermentsystem.domain` | Domain models (`Deferral`, `Student`, `Lecturer`, `Module`, `Programme`, `Mail`) and JDBC row mappers |
-| `com.defermentsystem.repository` | DAO interfaces and `JdbcDaoSupport` implementations, plus `HerokuDataSourceFactory` |
-| `com.defermentsystem.service` | Service interfaces and thin delegating implementations |
-| `com.defermentsystem.exceptions` | `FormUploadException` for non-PDF uploads |
+| `com.defermentsystem.controllers` | Spring MVC controllers and embedded-Tomcat launcher |
+| `com.defermentsystem.domain` | Domain models and JDBC row mappers |
+| `com.defermentsystem.repository` | DAO interfaces and `JdbcDaoSupport` implementations |
+| `com.defermentsystem.service` | Service interfaces and implementations |
+| `com.defermentsystem.exceptions` | Form-upload and deferral-state exceptions |
 
 ---
 
-## Deferral Flows
+<a id="deferral-flows"></a>
 
-**Module deferral** (`/admin/deferral/addModuleDeferralPage1`)
+## 7. Business Workflows
 
-1. User enters a student ID and selects a module with its CRN.
-2. The DAO JOINs `programme` and `registration` to look up the student's coordinator.
-3. A row is inserted into `deferrals` and the uploaded PDF is saved to the server under its generated `Def_ID`.
-4. An email is sent to admissions confirming the submission.
+### Module deferral submission
 
-**Programme deferral** (`/admin/deferral/addProgrammeDeferralPage1`)
+<a id="student-submission"></a>
 
-1. User enters a student ID and programme ID.
-2. The DAO fetches all modules registered for that student and programme, then bulk-inserts one deferral row per module using `batchUpdate`.
-3. The uploaded PDF is saved once for each generated deferral ID.
-4. An email is sent to admissions, and on approval the student's registrations are removed from the `registration` table.
+Start at `/admin/deferral/addModuleDeferralPage1`, relative to the application context.
+
+The current implementation, represented by `DeferralController.displayModuleDeferralPage2(...)`, performs these steps:
+
+1. Receive student, module, and CRN information.
+2. Resolve the module and validate that it corresponds to the supplied CRN.
+3. Resolve the student's registered programme and the programme coordinator.
+4. Insert the deferral record.
+5. Retrieve the generated `Def_ID`.
+6. Save the uploaded PDF using that generated ID.
+7. Retrieve student details and initiate an admissions email notification.
+
+The module insert is protected by service-level and DAO-level transaction configuration. The PDF write and SMTP notification are currently external side effects performed after the service call and are not part of the database transaction.
+
+A database insert can therefore succeed before a later file-write or email failure. If the file write fails after an ID is assigned, the controller catches the exception but can still send email and return the deferral list. The record may have no valid document despite a success-shaped response. PDF/database coordination is **not currently atomic**.
+
+### Programme deferral submission
+
+Start at `/admin/deferral/addProgrammeDeferralPage1`, relative to the application context.
+
+The current implementation, represented by `DeferralController.displayProgrammeDeferralPage2(...)`, performs these steps:
+
+1. Retrieve modules registered to the student and programme.
+2. Resolve the programme coordinator.
+3. Create one deferral record for each registered module.
+4. Retrieve generated deferral IDs.
+5. Save a copy of the supporting PDF for each generated ID.
+6. Initiate an admissions email notification.
+
+The controller calls `createProgrammeDeferralGetId(...)`, which iterates over registered modules and calls `createModuleDeferralGetId(...)` for individual inserts and generated IDs. The separate `createProgrammeDeferral(...)` method uses a JDBC batch insert and does not return IDs; it is the method exercised by the injected programme-submission rollback test. Both outer DAO methods use `REQUIRED` and join their service transaction. The internal call to `createModuleDeferralGetId(...)` runs within that existing transaction rather than going through the DAO proxy again.
+
+The controller catches database and file exceptions in this flow but then attempts to send an email and returns the deferral list. Thus an error can result in a success-shaped response or notification. The existing transaction test does **not** prove successful programme submission, the controller's ID-returning path, or verification of every generated programme record. HSQLDB tests also cannot prove filesystem publication or SMTP delivery.
+
+### Approval and rejection
+
+<a id="lecturer-approval"></a>
+<a id="lecturer-rejection"></a>
+<a id="concurrent-lecturer-decisions"></a>
+
+`DeferralServiceImpl.decideDeferral(...)` implements:
+
+1. Validation of the requested decision.
+2. Retrieval of the deferral.
+3. Verification that the status is pending.
+4. Verification of the lecturer ID, when supplied.
+5. Conditional update to `True` or `Rejected`.
+6. Verification that exactly one row was updated.
+
+Current statuses are:
+
+| `Approved` value | Meaning |
+|---|---|
+| `False` | Pending |
+| `True` | Approved |
+| `Rejected` | Rejected |
+
+The update in `DeferralJdbcDaoSupport.updateDeferralStatusIfPending(...)` requires the row to remain pending and retain its stored lecturer ID. This conditional SQL guards against stale and conflicting updates at the database level. It does **not** establish the caller's identity.
+
+The current controller calls `decideDeferral(id, null, approval)`, so the optional lecturer ownership check is skipped for this route. Connecting the authenticated identity to an enforced ownership check is outstanding. In addition, `getDeferral(...)` uses `queryForObject`, which throws for a missing row before the service's null check can produce its intended business exception.
+
+The separate `approveProgrammeDeferral(...)` service/DAO operation approves pending programme rows and deletes matching registrations in the same transaction. The individual `decideDeferral(...)` route only updates the selected status; it does not call that programme approval operation or remove registrations.
+
+This implementation is **implemented**, but it does not establish that a complete concurrent approval/rejection test suite has been run.
+
+The schema has no:
+
+- Separate decision-history or audit table
+- Rejection-reason field
+- Document-reference table
 
 ---
 
-## Transaction Management and Business Workflows
+<a id="transaction-management-and-business-workflows"></a>
 
-All implementation and verification described here is intended to remain local to this repository. No deployment or GitHub publishing is required.
+## 8. Transaction Management
 
-### Implementation status
+<a id="transaction-architecture"></a>
 
-The existing application provides Spring JDBC transactions and a `DataSourceTransactionManager`. The implemented transactional architecture is:
+The application uses `DataSourceTransactionManager` from Spring JDBC. Annotation-driven transactions are enabled in `root-context.xml`:
 
-- `root-context.xml` defines `transactionManager` and enables annotation-driven transactions.
-- Spring deferral services own business transaction boundaries.
-- Controllers remain request-oriented and do not manage database transactions.
-- Repositories and DAOs participate in the transaction created by the service.
-- `TransactionTemplate` remains available for genuinely useful programmatic transaction control.
+- `tx:annotation-driven`
+- Transaction manager: `transactionManager`
+- CGLIB proxying: `proxy-target-class="true"`
 
-Deferral workflow DAO operations used for submission and decision processing now use `Propagation.REQUIRED`, so they join the service transaction. The service methods for module/programme submission and deferral decisions use `@Transactional(rollbackFor = Exception.class)`. Conditional status updates prevent stale or duplicate decisions.
+The service layer owns logical business transactions. `DeferralServiceImpl` is class-level `@Transactional(readOnly = true)`. Selected mutation methods override this with `@Transactional(rollbackFor = Exception.class)`, including deferral submission and decision methods.
 
-`DeferralTransactionTest` verifies commits and injected rollbacks with the real HSQLDB integration environment and independent JDBC queries. Configuration tests separately verify Spring proxies and context structure.
+Repositories participate in the surrounding Spring transaction when they use `Propagation.REQUIRED`. `TransactionTemplate` is configured but should only be used for an explicit programmatic transaction need; it is not needed to replace the declarative deferral workflows.
+
+### Propagation used by deferral repositories
+
+| Propagation | Meaning |
+|---|---|
+| `REQUIRED` | Join the existing service transaction, or create a transaction if one does not exist |
+| `REQUIRES_NEW` | Suspend the existing transaction and commit or roll back independently |
+
+Not every `DeferralJdbcDaoSupport` method uses `REQUIRED`.
+
+Current relevant usage includes:
+
+- Module and programme submission operations: `REQUIRED`
+- `updateDeferralStatusIfPending(...)`: `REQUIRED`
+- `createDeferralGetId(...)`: `REQUIRES_NEW`
+- Many list, lookup, delete, and legacy update methods: `REQUIRES_NEW`
+
+`REQUIRES_NEW` is independent transaction behaviour. In particular, `createDeferralGetId(...)` can commit independently if it is called inside a larger operation. All DAO propagation statements must therefore be reviewed before claiming that every larger service workflow is atomic.
+
+### Transaction lifecycle
 
 ```mermaid
 flowchart LR
-    Browser[JSP / Browser] --> Controller[Spring MVC Controller]
-    Controller --> Service[Application Service]
-    Service -->|@Transactional| TransactionManager[Spring DataSourceTransactionManager]
-    TransactionManager -->|same transaction| DAO1[Repository / DAO]
-    TransactionManager -->|same transaction| DAO2[Repository / DAO]
-    DAO1 --> Database[(MySQL)]
-    DAO2 --> Database
+    Browser[Browser] --> Controller[Spring MVC Controller]
+    Controller --> Proxy[Spring Transaction Proxy]
+    Proxy --> Service[Application Service]
+    Proxy -. begins and completes transaction .-> Manager[DataSourceTransactionManager]
+    Service --> DAO[Repository / DAO]
+    DAO --> JdbcTemplate[JdbcTemplate]
+    JdbcTemplate --> Database[(Relational Database)]
+    Manager -. manages database connection .-> Database
+    Controller -. external file write .-> PDF[Filesystem PDF storage]
+    Controller -. external notification .-> SMTP[SMTP email]
 ```
 
-### Transaction architecture
+The browser/controller layer receives the request and performs the validation present in each flow. The controller calls the service proxy, which establishes the Spring transaction before invoking the service method. The service coordinates the operation; the DAO and `JdbcTemplate` perform database operations. When the transaction boundary is reached, a successful operation commits and an applicable exception causes rollback. DAO methods using `REQUIRES_NEW` instead run in an independent transaction.
 
-The service layer must own logical business operations. A declarative `@Transactional` method should coordinate repositories that belong to one business operation; each repository call should use the service transaction instead of independently starting a new transaction.
+The controller must not display a success response after a database operation that failed and propagated an exception.
 
-The intended rules are:
+### Administrator operations: intended transaction policy
 
-- Use Spring declarative transactions for normal service operations.
-- Use the existing `DataSourceTransactionManager`.
-- Roll back on runtime exceptions by default.
-- Configure `rollbackFor = Exception.class` when a checked business exception must also roll back.
-- Use `readOnly = true` for read-only service operations where it is compatible with the existing implementation.
-- Preserve existing propagation and isolation defaults unless a documented business requirement requires otherwise.
-- Do not manage transactions manually in controllers or DAOs.
-- Retain `TransactionTemplate` for a genuine programmatic use case; do not introduce a competing transaction-management style for the same workflow.
+This is guidance for identifying business transaction boundaries, not a claim that every existing administrator operation follows it. Some legacy DAO methods use `REQUIRES_NEW`, as noted above.
 
-### Student submission
-
-The existing module and programme submission flows are in `DeferralController` and `DeferralJdbcDaoSupport`.
-
-Module submission should keep these operations in one service-level transaction:
-
-1. Resolve the selected module and its CRN.
-2. Resolve the student's programme and coordinator.
-3. Insert the deferral row and obtain `Def_ID`.
-4. Finalise the supporting document only after the database transaction has succeeded.
-
-Programme submission should keep these operations in one service-level transaction:
-
-1. Resolve the modules registered to the student and programme.
-2. Resolve the programme coordinator.
-3. Insert one deferral row for each module.
-4. Return all generated deferral IDs.
-5. Finalise supporting-document files only after the database transaction has succeeded.
-
-When a submission succeeds, all database records are committed and the existing confirmation response is displayed. If insertion or related-record processing fails, the transaction must roll back without incomplete applications or module associations. The controller must not display a success response after rollback.
-
-No separate document-reference table is present in the existing schema. Supporting PDFs are stored below `resources/form/uploadedForms` using generated deferral IDs. A filesystem write is therefore outside MySQL transaction control.
-
-The implementation must stage or compensate upload files so that a database rollback does not leave orphaned PDFs. Existing files must not be replaced until all database work succeeds. Email must not be sent before a successful database commit.
-
-### Lecturer approval
-
-The existing approval implementation updates the `Approved` column and, for a programme deferral, removes matching registration rows. The current MySQL/HSQLDB schema represents decisions as `True` or `False` and has no separate decision table or rejection-reason column.
-
-A service-level approval transaction must:
-
-1. Verify that the deferral exists.
-2. Verify that it is currently `False`.
-3. Verify that the authenticated lecturer is the application's authorised coordinator.
-4. Apply the approval and any existing related database changes atomically.
-5. Commit on success or roll back the complete operation on failure.
-
-Approval and rejection are normal state transitions. The Java status check is not sufficient on its own: the database update must be conditional on the current pending status, and concurrent processing must use an appropriate MySQL row lock or conditional update. The simplest existing-schema implementation should use an atomic `UPDATE ... WHERE Def_ID = ? AND Approved = 'False'` and reject the operation if the affected-row count is zero.
-
-Approval must not accept a nonexistent, already approved, or otherwise conflicting decision. Any failure while changing the status or related registration rows must preserve the original database state.
-
-### Lecturer rejection
-
-The existing `Approved` field now supports the explicit `Rejected` status. `DatabaseSetup.sql` and `test-schema.sql` use a bounded string status instead of the MySQL `enum('True','False')` definition, preserving the existing table and MVC architecture. There is still no separate rejection-reason or decision-audit table.
-
-The rejection implementation:
-
-1. Verify that the deferral exists and is pending.
-2. Record the rejection state atomically.
-3. Apply any existing audit or reason information, if a schema migration is explicitly supplied.
-4. Reject already approved or already rejected applications.
-5. Roll back every operation if a later step fails.
-
-### Concurrent lecturer decisions
-
-Two lecturers must not be able to approve or reject the same pending application with conflicting results. Normalisation of the status transition is required at the database layer:
-
-- Re-read or lock the deferral row inside the transaction.
-- Apply a conditional status update.
-- Require exactly one affected row.
-- Reject stale or duplicate decisions.
-- Preserve authorisation checks in the Spring Security/controller/service path.
-
-The MySQL `InnoDB` and the existing `DataSourceTransactionManager` may support a row lock or conditional update. Tests should verify this with independent database connections where practical.
-
-### Administrator operations
-
-The existing administrator CRUD operations cover students, lecturers, modules and programmes. Only operations that change multiple dependent records need explicit business transaction boundaries.
-
-Expected transaction policy:
-
-| Operation | Intended transaction policy |
+| Operation | Intended policy |
 |---|---|
-| Single-row student CRUD | Transactional only if later dependent writes exist |
-| Single-row lecturer CRUD | Transactional only if later dependent writes exist |
-| Single-row module CRUD | Transactional only if later dependent writes exist |
-| Programme update or dependent associations | One service transaction across related writes |
-| Deferral creation | One service transaction across application and module records |
-| Approval or rejection | One service transaction across decision/status changes |
-| Read-only list and lookup methods | `readOnly = true` where compatible |
+| Single-row student, lecturer, or module CRUD | An encompassing business transaction is needed when dependent writes are added |
+| Programme update with dependent associations | One service transaction across related writes |
+| Deferral creation | One service transaction across related database writes |
+| Approval or rejection | One service transaction across the decision and any related writes |
+| Read-only lists and lookups | Use `readOnly = true` where compatible |
 
-Do not annotate every service method indiscriminately. Administrators must receive an error response and no partial update if an identified multi-record operation fails.
+An identified multi-record operation should report failure without leaving a partial update; this requires verification for each operation.
 
-### Failure handling
+---
 
-Service methods must let transaction failures propagate so Spring can mark the transaction for rollback. Runtime exceptions roll back under the default Spring behaviour. Checked business exceptions that form part of a relevant operation must use `rollbackFor = Exception.class`.
+## 9. Transaction Guarantees
 
-Controllers must:
+### Database transaction guarantees
 
-- Catch only the appropriate business or request-level exceptions.
-- Add diagnostic information to the model or logs.
-- Avoid exposing sensitive database details to users.
-- Return existing error views or validation responses.
-- Never return a success confirmation after rollback.
+Spring and the relational database provide or help to provide:
 
-### Supporting documents and email
+- **Atomicity:** all operations in a successfully managed database transaction commit together, or the transaction rolls back.
+- **Consistency:** constraints and application validation help preserve a valid database state.
+- **Isolation:** concurrent transactions are isolated according to the database isolation level and locking behaviour.
+- **Durability:** committed database changes persist according to the relational database engine.
 
-Database transactions do not cover filesystem uploads or SMTP delivery:
+The HSQLDB integration tests demonstrate selected service commit and rollback behaviour within the test environment. They do not demonstrate every workflow, MySQL/HSQLDB concurrency scenario, filesystem scenario, or email scenario.
 
-- PDF validation and temporary staging occur before finalisation.
-- The document name uses the generated deferral ID.
-- Database rollback must trigger cleanup or prevent final file placement.
-- A document write failure must not expose a successful database submission.
-- Email is sent only after the database transaction commits.
-- Email delivery failure must be logged and must not reverse a committed database transaction.
-- Spring transaction synchronisation or after-commit events are preferable to sending mail before commit.
+### Business-process limitations
 
-This distinction is not fully implemented in the current controller flow; email and file writes currently occur outside a clearly verified service transaction boundary.
+A database transaction does not cover the whole business process. It does not cover:
 
-### Transaction test matrix
+- PDF validation
+- Temporary or final filesystem writes
+- SMTP delivery
+- Browser response rendering
 
-The table below is the acceptance matrix for the implementation. A configuration or proxy test is separate from behavioural rollback verification.
+Therefore the application does not currently provide full ACID-style guarantees across database, filesystem, and email operations. Database atomicity and end-to-end business atomicity must be described separately.
 
-| Test | Workflow | Injected failure | Required result | Current result |
-|---|---|---|---|---|
-| S1 | Student module/programme submission | None | Commit: application and associations exist | PASS — `successfulSubmissionAndApprovalCommit` |
-| S2 | Student submission | Real batch insert followed by injected exception | Rollback: no application remains | PASS — `laterSubmissionFailureRollsBackEarlierInsert` |
-| S3 | Student submission | Real write followed by injected module/submission failure | Independent query finds no application or association | PASS — covered by submission DAO failure |
-| S4 | Student submission | Document-reference/related write after earlier writes | All earlier writes roll back | Not applicable: no document-reference table exists |
-| S5 | Student submission | Checked business exception | Rollback configured with `rollbackFor` | Implementation present; dedicated checked-exception test remains |
-| A1 | Lecturer approval | None | Commit status and any decision data | PASS — `successfulSubmissionAndApprovalCommit` |
-| A2 | Lecturer approval | Decision/status-related write | Original status remains unchanged | PASS — status failure test |
-| A3 | Lecturer approval | Status write followed by injected exception | Earlier status write rolls back | PASS — `statusUpdateFailureRollsBackDecision` |
-| A4 | Lecturer approval | Nonexistent application | No database changes | Implementation present; dedicated test remains |
-| A5 | Lecturer approval | Already approved or rejected application | Rejected; no unintended changes | PASS — `duplicateDecisionAndWrongLecturerAreRejected` |
-| A6 | Lecturer approval | Conflicting decision | Stale approval/rejection rejected | PASS — conditional status update |
-| R1-R6 | Lecturer rejection | Success and staged failures | Commit success or complete rollback | Rejection and duplicate-state behaviour implemented; dedicated R2-R4 failure tests remain |
-| Admin | Identified multi-record administrator operation | Failure after an earlier write | Earlier write rolls back | Not applicable unless a multi-record operation is identified |
+---
 
-Behavioural tests must use the real Spring transaction manager, the real transactional service bean and an actual database integration environment. A test-level `@Transactional` annotation must not mask service commit/rollback behaviour. Verify data from an independent connection or transaction after the service call completes. DBUnit or test setup data must be cleaned up and tests must be repeatable.
+<a id="supporting-documents-and-email"></a>
 
-Failure injection may use a test-specific repository implementation, a mocked downstream repository with real earlier database operations, or a controlled constraint violation. Mock method calls alone do not prove rollback.
+## 10. Filesystem and Email Operations
 
-### Running the tests
+### Supporting PDF storage
 
-The default build runs unit, DAO and configuration tests and excludes browser UI tests:
+Supporting PDFs are stored below the web application resource directory as:
+
+```text
+resources/form/uploadedForms/<Def_ID>.pdf
+```
+
+One generated PDF filename is used for a module deferral. Programme deferrals use one PDF for each generated deferral ID. The controller checks the submitted multipart content type for `application/pdf`; it does not verify PDF contents.
+
+The current controller writes files directly after database submission. It does not stage documents, publish only after commit verification, or perform compensating cleanup for every database failure.
+
+An existing database record is therefore capable of being created while a required document is missing or while a later file operation fails.
+
+### Email notification
+
+The controller calls `Mail.sendModuleDeferralMail(...)` or `Mail.sendProgrammeDeferralMail(...)` after submission. Email delivery is an external SMTP side effect.
+
+It is not coordinated with the database transaction and is not sent through a verified after-commit mechanism.
+
+Email delivery failure must not reverse an already committed database transaction. It should instead be logged and handled separately.
+
+### Outstanding improvements
+
+The following improvements are **not implemented**:
+
+- Stage uploaded documents before final placement
+- Prevent final publication when database work fails; coordinate final placement after successful commit
+- Clean temporary files after database or file failure
+- Prevent or clean up orphaned PDF files
+- Send email only after verified commit
+- Log file and email failures and handle SMTP delivery failure without reversing committed database changes
+- Store document metadata in a document-reference table
+
+These filesystem and email operations cannot be proven transactional by an HSQLDB database rollback test alone.
+
+---
+
+<a id="transaction-test-matrix"></a>
+
+## 11. Transaction Test Matrix
+
+`DeferralTransactionTest` uses the real proxied Spring service, transaction manager, and HSQLDB database writes. It verifies database state through separate `JdbcTemplate` queries after service calls, without a test-level transaction. On 26 November 2026, `mvn '-Dtest=DeferralTransactionTest' test` ran four tests with zero failures, errors, or skips. This result is limited to that run and test environment.
+
+| Test | Operation and failure | Verified result | Status |
+|---|---|---|---|
+| `successfulSubmissionAndApprovalCommit()` | Creates a module deferral, then approves it; no injected failure | Commit: student ID is stored and status becomes `True` | Implemented and tested |
+| `laterSubmissionFailureRollsBackEarlierInsert()` | Invokes the real batch-insert programme DAO, then injects an exception | Rollback: no deferrals remain for the test student | Implemented and tested |
+| `statusUpdateFailureRollsBackDecision()` | Performs a real status update, then injects an exception | Rollback: status remains `False` | Implemented and tested |
+| `duplicateDecisionAndWrongLecturerAreRejected()` | Approves a deferral, then attempts further decisions including one with another lecturer ID | Validation: both later calls throw and status stays `True`; neither establishes that a wrong lecturer is rejected for a pending deferral | Implemented and tested; ownership-specific test outstanding |
+
+### Outstanding test coverage
+
+| Capability | Status |
+|---|---|
+| Successful programme submission | Implemented functionality; dedicated test outstanding |
+| Verification of all generated programme deferral IDs and records | Outstanding |
+| Checked-exception rollback | Implementation is configured; dedicated test outstanding |
+| Nonexistent deferral decision | Missing-row DAO exception occurs before the intended service null check; dedicated test and consistent handling outstanding |
+| Wrong lecturer deciding a pending deferral | Service guard exists for a non-null lecturer ID; dedicated test and controller enforcement outstanding |
+| Dedicated rejection success test | Outstanding |
+| Rejection failure after an earlier database write | Outstanding |
+| Concurrent approval/rejection attempts | Outstanding |
+| Concurrent duplicate decisions | Outstanding |
+| Document persistence success/failure | Out of database transaction scope; dedicated integration and filesystem tests outstanding |
+| Email delivery success/failure | Not transactionally implemented; dedicated test outstanding |
+
+### Original acceptance-case reference
+
+The original README grouped the desired scenarios under the labels below. These are acceptance goals, not blanket claims that the cases passed. The implemented tests and their exact scope are listed above.
+
+| Cases | Acceptance goal | Current evidence or gap |
+|---|---|---|
+| S1 | Successful module and programme submissions commit their records | Module submission tested; successful programme submission test outstanding |
+| S2-S3 | A failure after a submission write rolls back earlier writes | Batch programme DAO failure tested; other submission paths need dedicated coverage |
+| S4 | A later document-reference write failure rolls back earlier writes | Not applicable to the current schema: no document-reference table |
+| S5 | A checked business exception rolls back submission | Configured on selected service methods; dedicated test outstanding |
+| A1 | Successful approval commits the decision | Module deferral approval tested |
+| A2-A3 | Failure during or after a status write rolls back the decision | Injected failure after a status update tested |
+| A4 | A decision on a missing deferral makes no changes | Dedicated test outstanding; DAO currently throws before the service null check |
+| A5-A6 | Duplicate or conflicting decisions do not change an already-decided record | Sequential duplicate attempts tested; dedicated concurrent conflict testing outstanding |
+| R1-R6 | Rejection succeeds or rolls back fully on staged failures | Rejection implemented; dedicated success and failure tests outstanding |
+| Admin | Failure after an earlier write in a multi-record administrator operation rolls back all writes | Requires an identified operation and a dedicated test |
+
+Test-level `@Transactional` must not conceal the service proxy's commit or rollback behaviour. Independent database verification is important because it demonstrates that an operation really committed or rolled back in the database rather than only returning a method result or retaining test-runner transaction state.
+
+---
+
+<a id="failure-handling"></a>
+
+## 12. Failure Handling
+
+Service methods that are mutation workflows use `rollbackFor = Exception.class` so checked business failures can also mark the transaction for rollback.
+
+`InvalidDeferralStateException` represents invalid or conflicting deferral decisions. The controller catches decision failures and adds an error message to the model.
+
+Controllers should catch only appropriate request/business exceptions, add diagnostic information to the model or logs, avoid exposing database details, and never display success after rollback.
+
+The current submission controller catches broad exceptions and writes files directly. A module file failure after insertion can still lead to email and the list view; programme database or file failures are also caught before the email/list path. Fixing those success-shaped responses and coordinating database and filesystem failures remain outstanding. Error messages can include exception details and need review before production use.
+
+---
+
+## 13. Implemented vs Outstanding Functionality
+
+| Capability | Status |
+|---|---|
+| Spring MVC application | Implemented |
+| Root/child application contexts | Implemented |
+| JDBC persistence | Implemented |
+| JDBC-backed Spring Security | Implemented |
+| Module deferral submission | Implemented |
+| Programme deferral submission | Implemented |
+| Supporting PDF upload | Implemented |
+| Admissions email notification | Implemented |
+| Service-level transactions | Implemented for selected workflows |
+| Conditional decision updates | Implemented |
+| Approval and rejection states | Implemented |
+| Lecturer ownership enforcement on the decision route | Outstanding; the controller passes `null` |
+| Failure-injection rollback tests | Implemented for selected workflows |
+| Dedicated concurrency tests | Outstanding |
+| Complete checked-exception rollback tests | Outstanding |
+| Atomic PDF/database coordination | Outstanding |
+| Reliable after-commit email processing | Outstanding |
+| Rejection-reason persistence | Not implemented |
+| Decision-history audit trail | Not implemented |
+| Separate document-reference table | Not implemented |
+| Full administrator URL enforcement | Outstanding |
+
+---
+
+<a id="database"></a>
+
+## 14. Database
+
+Run `DatabaseSetup.sql` to create the MySQL schema.
+
+The principal tables are:
+
+| Table | Responsibility |
+|---|---|
+| `deferrals` | Deferral request, student, lecturer, programme, module, and status |
+| `student` | Student records |
+| `lecturer` | Lecturer records |
+| `modules` | Module and CRN information |
+| `programme` | Programme and coordinator |
+| `registration` | Student/module/programme associations |
+| `semester` | Semester records |
+| `users` | Login accounts |
+| `user_roles` | Spring Security roles |
+
+Supporting PDFs are not stored in these tables. There is no document-reference table.
+
+### Deferral status
+
+The `Approved` column is a bounded string in the current MySQL setup and in HSQLDB test setup:
+
+- `False`: pending
+- `True`: approved
+- `Rejected`: rejected
+
+The test schema uses `VARCHAR_IGNORECASE(10)`; the MySQL setup uses `VARCHAR(10)`.
+
+The HSQLDB test schema is defined in `src/test/resources/test-schema.sql`. It includes the application tables and authentication tables needed by the integration tests, but it does not reproduce every MySQL-specific engine or foreign-key characteristic.
+
+In particular:
+
+- HSQLDB uses an identity definition for `Def_ID`.
+- MySQL uses a composite primary key for deferrals and includes a deferral-to-module foreign key; the HSQLDB test table uses `Def_ID` as its sole primary key and omits that foreign key.
+- MySQL semester dates use enumerated values; the HSQLDB schema uses bounded strings.
+- HSQLDB status comparison is case-insensitive because `VARCHAR_IGNORECASE` is used.
+- MySQL is configured with `InnoDB` for the production-style schema.
+- MySQL foreign-key and locking behaviour may differ from HSQLDB.
+
+MySQL concurrency and locking behaviour therefore should not be assumed to have been fully proven solely by HSQLDB tests.
+
+---
+
+<a id="technologies"></a>
+
+## 15. Technologies
+
+| Area | Technology |
+|---|---|
+| Language/runtime | Java 8 |
+| Web framework | Spring MVC 4.0.0 |
+| Security | Spring Security 3.2.5 |
+| Persistence | Spring JDBC / `JdbcTemplate` / `JdbcDaoSupport` |
+| Transaction management | Spring `DataSourceTransactionManager` |
+| View layer | JSP, JSTL, Apache Tiles 3.0.1 |
+| Validation | Bean Validation 1.1 / Hibernate Validator 5.0.1 |
+| Local database | MySQL 5.x; MySQL connector 5.1.6 |
+| Cloud database | PostgreSQL through `DATABASE_URL`; JDBC driver 9.4.1212 |
+| Test database | HSQLDB 2.0.0 |
+| Testing | JUnit 4.11, DBUnit 2.4.9, Spring Test DBUnit 1.1.0, Selenium 4.13.0, Log4j 1.2.12 |
+| Embedded server | Apache Tomcat 8.5.23 |
+| Mail | JavaMail 1.4.7 |
+| File upload | Apache Commons FileUpload 1.3.1 |
+| Build | Maven 3, WAR packaging |
+
+---
+
+<a id="configuration"></a>
+
+## 16. Configuration
+
+<a id="spring-application-context-configuration"></a>
+
+Spring application-context responsibilities are listed in [Configuration Responsibilities](#5-configuration-responsibilities).
+
+<a id="local-mysql"></a>
+
+### Local database
+
+Create an ignored `src/main/resources/prop.properties` file using environment-appropriate values:
+
+```properties
+jdbc.driverClassName=com.mysql.jdbc.Driver
+jdbc.url=jdbc:mysql://localhost:3307/spring_project
+jdbc.username=<local-database-user>
+jdbc.password=<local-database-password>
+```
+
+Do not commit database credentials or SMTP credentials.
+
+<a id="heroku-postgresql"></a>
+
+### PostgreSQL
+
+`HerokuDataSourceFactory` constructs a PostgreSQL JDBC data source when `DATABASE_URL` is set. The environment variable takes precedence over local properties.
+
+The expected format is `postgres://user:password@host:port/database`. Set it in the deployment environment; a local `prop.properties` file is not required when it is supplied.
+
+---
+
+<a id="building-and-running"></a>
+
+## 17. Building and Running
+
+Build the WAR:
 
 ```powershell
 mvn clean package
 ```
 
-Run all existing JDBC DAO tests:
+The default build excludes browser UI tests through the Maven Surefire configuration.
+
+To build without running tests, use `mvn clean package -DskipTests`.
+
+Run with an embedded server after building:
 
 ```powershell
-mvn '-Dtest=*JdbcDaoSupportTest' test
+java -cp "target/SpringWebProject/WEB-INF/classes;target/SpringWebProject/WEB-INF/lib/*" com.defermentsystem.controllers.HerokuMain
 ```
 
-Run the Spring context diagnostic independently:
+The README command may require classpath separators or deployment-container classloading to match the local Java/Maven environment.
+
+Alternatively, deploy `target/SpringWebProject.war` to a Servlet 3.1-compatible container, such as standalone Tomcat 8.5.
+
+The `Procfile` launches `HerokuMain`, which uses `$PORT` or port `8080` and serves the WAR unpacked during Maven packaging.
+
+---
+
+<a id="testing"></a>
+
+## 18. Testing
+
+<a id="running-the-tests"></a>
+
+### Maven package
 
 ```powershell
-mvn '-Dtest=WebApplicationContextDiagnosticTest' test
+mvn clean package
 ```
 
-Run static and runtime configuration checks together:
+This performs the default build and excludes browser UI tests.
+
+### DAO integration tests
+
+```powershell
+mvn "-Dtest=*JdbcDaoSupportTest" test
+```
+
+DAO integration tests create their in-memory HSQLDB tables from `src/test/resources/test-schema.sql`, and DBUnit loads the test dataset before each test. An example is `DeferralJdbcDaoSupportTest`. The suite also contains individual unit/smoke tests, such as `HeadlessChromeDriverTest`; those do not establish database transaction behaviour.
+
+### Transaction integration tests
+
+```powershell
+mvn "-Dtest=*Transaction*Test" test
+```
+
+This runs `DeferralTransactionTest`, which contains four methods:
+
+- `successfulSubmissionAndApprovalCommit`
+- `laterSubmissionFailureRollsBackEarlierInsert`
+- `statusUpdateFailureRollsBackDecision`
+- `duplicateDecisionAndWrongLecturerAreRejected`
+
+### Static configuration test
+
+```powershell
+mvn "-Dtest=StaticConfigurationTest" test
+```
+
+<a id="spring-webapplicationcontext-diagnostic"></a>
+<a id="diagnostic-tools"></a>
+
+### Spring application-context diagnostic
+
+```powershell
+mvn "-Dtest=WebApplicationContextDiagnosticTest" test
+```
+
+The diagnostic creates the real Root context and the conventional `mvc-dispatcher` child context. It verifies bean ownership, context separation, dependency injection, MVC mappings, and transaction proxies. It also prints bean inventories and handler mappings to the test output.
+
+Configuration diagnostics prove configuration and proxy structure. They do not prove successful business transactions or end-to-end browser behaviour.
+
+<a id="spring-configuration-checker"></a>
+
+### Combined configuration checker
 
 ```powershell
 .\Check-Deferment-Configuration.ps1
 ```
 
-Run the implemented transactional integration suite explicitly:
+The checker runs `StaticConfigurationTest` and `WebApplicationContextDiagnosticTest` without starting Tomcat. `PASS` denotes a successful check, `FAIL` a required failure, and `WARNING` an item to review. The script exits nonzero when Maven or a required check fails. Maven writes build output under `target/`; the Root context needs local database configuration or `DATABASE_URL` to initialise. The semester repository has no transactional methods and is reported as a warning rather than a required transaction proxy.
 
-```powershell
-mvn '-Dtest=*Transaction*Test' test
-```
-
-This runs `DeferralTransactionTest`, which uses real HSQLDB writes and independent JDBC verification. UI tests require a running application and a dedicated MySQL test database:
+### Selenium UI tests
 
 ```powershell
 mvn -Pui-tests clean package
 ```
 
-### Diagnostic tools
+Selenium tests require:
 
-`WebApplicationContextDiagnosticTest` verifies the existing Root/Child context relationship, service/repository registration, dependency injection, repository data sources, transaction advice and MVC handler mappings.
+- A running application at the URL expected by the tests, `http://localhost:8080/SpringWebProject/`
+- A dedicated MySQL test database configured through `prop.properties`: DBUnit setup modifies its data
+- Chrome; the shared helper uses Selenium Manager for a matching driver
 
-`StaticConfigurationTest` and `Check-Deferment-Configuration.ps1` verify XML and web-descriptor configuration without starting Tomcat.
+The browser test classes are `DeferralTest`, `LecturerTest`, `LoginTest`, `ModuleTest`, `ProgrammeTest`, and `StudentSeleniumTest`; the shared helper runs Chrome headlessly.
 
-These diagnostics establish configuration and proxy presence only. They do not establish database commit or rollback behaviour. Rollback behaviour must be demonstrated by independent transactional integration tests that perform real writes and verify database state after the service boundary completes.
+The UI tests are excluded from the default Maven build. The shared `HeadlessChromeDriverTest` is a browser setup smoke test and runs in the default build. Existing UI tests have known issues including click interception, jQuery Mobile selects, and validation-message checks.
 
-### Limitations
+The Selenium suite is not evidence that all transaction scenarios passed.
 
-- The existing application must remain Spring MVC 4, Spring JDBC and JSP/Tiles; no REST, Spring Boot, JPA/Hibernate or frontend framework is introduced.
-- Some unrelated legacy DAO methods may retain `REQUIRES_NEW`; deferral submission and decision methods now use `REQUIRED` so they join the service transaction.
-- The repository has no separate rejection-reason or decision-audit schema.
-- The database has no document-reference table; document state is only represented by filesystem files.
-- Email and filesystem operations are external side effects and cannot be rolled back by MySQL.
-- Concurrent decisions require an atomic conditional update or row lock and dedicated concurrency testing.
-- Existing approved/rejected UI and business semantics must be verified against the schema before adding new status values.
-- Configuration diagnostics are not behavioural evidence of rollback.
+### Logging
+
+Log4j settings are in `src/main/resources/log4j.properties` (INFO to stdout) and `src/test/resources/log4j.properties` (WARN to stderr, with known DBUnit warnings suppressed). CGLIB proxy warnings are routed to `cglib-proxy-warnings.log` in the application's working directory, or `target/cglib-proxy-warnings.log` during tests. JavaMail debug output is disabled. A diagnostic result establishes only the checks actually run; the retained pre-refactor image is not a current test result.
 
 ---
 
-## Technologies
+<a id="security-notes"></a>
 
-| Concern | Version |
-|---|---|
-| Java | 8 |
-| Spring Framework | 4.0.0.RELEASE |
-| Spring Security | 3.2.5.RELEASE |
-| Persistence | Spring JDBC (`JdbcTemplate` / `JdbcDaoSupport`) |
-| View layer | JSP, JSTL, Apache Tiles 3.0.1 |
-| Validation | Hibernate Validator 5.0.1 / Bean Validation 1.1 |
-| Build | Maven 3 (WAR — `SpringWebProject.war`) |
-| Local database | MySQL 5.x (connector 5.1.6) |
-| Cloud database | PostgreSQL 9.4 (Heroku) |
-| Embedded server | Apache Tomcat 8.5.23 |
-| File upload | Apache Commons FileUpload 1.3.1 |
-| Email | JavaMail 1.4.7 |
-| Testing | JUnit 4.11, DBUnit 2.4.9, Spring Test DBUnit 1.1.0, HSQLDB, Selenium 4.13.0 (headless Chrome), Log4j 1.2 |
+## 19. Security
 
----
+### Authentication and authorisation
 
-## Database
+Authentication and authorisation are separate concerns:
 
-Run `DatabaseSetup.sql` to create the `spring_project` MySQL schema.
+- Authentication verifies the username/password in `users`.
+- Authorisation assigns roles from `user_roles`.
 
-| Table | Description |
-|---|---|
-| `deferrals` | Deferral requests: student, lecturer, programme, module, approval status |
-| `student` | Student records |
-| `lecturer` | Lecturer records |
-| `modules` | Module and CRN information |
-| `programme` | Programme and coordinator |
-| `registration` | Junction table: student, CRN, programme |
-| `semester` | Semester records |
-| `users` | Login accounts |
-| `user_roles` | Roles/authorities for Spring Security |
+The intended `/admin/**` administrator restriction is **not currently active**: its `intercept-url` entry in `spring-security.xml` is commented out.
 
-Spring Security reads from `users` and `user_roles` via the JDBC user-service configured in `spring-security.xml`.
+There is no active URL rule restricting `/admin/**` to `ROLE_ADMIN` or requiring authentication for those paths. The login mechanism alone must not be treated as access protection; full administrator URL enforcement and controller-level ownership checks are outstanding.
+
+Form submissions participate in Spring Security CSRF protection under `auto-config="true"`.
+
+### Security limitations and outstanding work
+
+- Externalise SMTP configuration and credentials
+- Rotate any exposed SMTP credentials
+- Keep database credentials outside source control
+- Replace demonstration credentials before production use
+- Do not treat current sample credentials as production credentials
+- Strengthen PDF validation beyond the submitted content type
+- Inspect file names and file content where stronger upload enforcement is required
+
+The repository README intentionally does not reproduce passwords or credentials.
 
 ---
 
-## Configuration
+## 20. Not Implemented / Out of Scope
 
-### Spring application-context configuration
+The application is intentionally not migrating to a REST or modern SPA architecture.
 
-The applied separation and responsibilities are described in [Architecture](#architecture). In summary:
+The following are outside the current implementation scope:
 
-- `root-context.xml` belongs to the Root context and defines infrastructure and root-level service/repository scanning.
-- `spring-security.xml` belongs to the Root context so `springSecurityFilterChain` and JDBC authentication can use the Root `dataSource`.
-- `mvc-dispatcher-servlet.xml` belongs to the MVC Child context and defines controllers, MVC validation, view resolution, Tiles, multipart handling, and static resources.
-- `repository-context.xml` is a separate classpath context used by repository tests and `App.java`.
+- REST APIs
+- Spring Boot migration
+- JPA/Hibernate migration
+- Microservices
+- A single-page application
+- React
+- Angular
+- Another frontend framework
+- Stripe integration
+- Payment processing
+- Payment gateways
+- Automated payment collection
 
-### Local (MySQL)
-
-Create the ignored `src/main/resources/prop.properties` file:
-
-```properties
-jdbc.driverClassName=com.mysql.jdbc.Driver
-jdbc.url=jdbc:mysql://localhost:3307/spring_project
-jdbc.username=root
-jdbc.password=yourpassword
-```
-
-### Heroku (PostgreSQL)
-
-`HerokuDataSourceFactory` uses the `DATABASE_URL` environment variable (Heroku's standard `postgres://user:pass@host:port/db` format) to construct a PostgreSQL JDBC URL at startup. Set `DATABASE_URL` in the Heroku app's config vars; a local `prop.properties` file is not required on Heroku. If both are present, `DATABASE_URL` takes precedence.
+The existing JSP, JSTL, Apache Tiles, Spring MVC, Spring JDBC, and embedded WAR architecture are preserved.
 
 ---
 
-## Project Structure
+<a id="limitations"></a>
+
+## 21. Known Limitations
+
+- Some legacy DAO methods use `REQUIRES_NEW`, including `createDeferralGetId(...)`.
+- Several unrelated CRUD DAO methods may commit independently.
+- PDF and SMTP side effects are not coordinated with database commits.
+- The `/admin/**` role restriction is not active.
+- The decision controller passes no lecturer identity, bypassing its service's optional ownership check.
+- Submission error handling can send notifications or return a success-shaped view after a database or file failure.
+- The README and tests should not be used to claim complete MySQL concurrency verification.
+- Selenium/UI test dependencies require a running application and dedicated database.
+- Older Java/Spring/JDBC/Tomcat versions are in use.
+- The application may require Java 8 for compatibility.
+
+---
+
+<a id="project-structure"></a>
+
+## 22. Project Structure
 
 ```text
 Deferment/
 ├── pom.xml
 ├── DatabaseSetup.sql
 ├── Procfile
-│
 ├── src/
 │   ├── main/
 │   │   ├── java/com/defermentsystem/
-│   │   │   ├── controllers/      # MVC controllers + HerokuMain launcher
-│   │   │   ├── domain/           # Domain models + row mappers
-│   │   │   ├── exceptions/       # FormUploadException
-│   │   │   ├── repository/       # DAO interfaces + JDBC implementations
-│   │   │   └── service/          # Service interfaces + implementations
-│   │   │
+│   │   │   ├── controllers/        # MVC controllers and embedded-Tomcat launcher
+│   │   │   ├── domain/             # Domain models and row mappers
+│   │   │   ├── exceptions/         # Application exceptions
+│   │   │   ├── repository/         # DAO interfaces and JDBC implementations
+│   │   │   └── service/            # Service interfaces and implementations
 │   │   ├── resources/
-│   │   │   ├── repository-context.xml # Datasource + transaction manager (classpath)
-│   │   │   ├── databaseEntries.xml # DBUnit seed data
-│   │   │   └── prop.properties   # Local MySQL connection settings
-│   │   │
+│   │   │   ├── repository-context.xml # Repository and command-line context
+│   │   │   ├── databaseEntries.xml     # DBUnit seed data
+│   │   │   └── prop.properties        # Local database settings, if configured
 │   │   └── webapp/
+│   │       ├── resources/          # Static resources and uploaded forms
 │   │       └── WEB-INF/
-│   │           ├── jsp/           # JSP views grouped by entity
-│   │           ├── root-context.xml            # Root infrastructure and component scan
-│   │           ├── mvc-dispatcher-servlet.xml # MVC + Tiles config
-│   │           ├── spring-security.xml        # Authentication + authorisation
-│   │           └── tiles.xml                  # ~30 Tiles view definitions
-│   │
+│   │           ├── jsp/            # JSP views
+│   │           ├── root-context.xml
+│   │           ├── mvc-dispatcher-servlet.xml
+│   │           ├── spring-security.xml
+│   │           └── tiles.xml
 │   └── test/
-│       └── java/com/defermentsystem/
-│
-└── target/   # Maven build output
+│       ├── java/com/defermentsystem/
+│       └── resources/              # Including the HSQLDB test schema
+└── target/                         # Maven build output
 ```
 
 ---
 
-## Building and Running
+<a id="author"></a>
 
-**Build the WAR:**
+## 23. Author
 
-```bash
-mvn clean package
-```
-
-The default build runs the unit, DAO and configuration tests (no running app or external database needed) and skips the browser UI tests. Add `-DskipTests` to skip all tests.
-
-**Run locally (embedded Tomcat):**
-
-```bash
-java -cp target/SpringWebProject/WEB-INF/classes:... com.defermentsystem.controllers.HerokuMain
-```
-
-Or deploy `target/SpringWebProject.war` to any Servlet 3.1-compatible container (e.g. standalone Apache Tomcat 8.5.x).
-
-**Heroku:** the `Procfile` launches `HerokuMain`, which starts embedded Tomcat on `$PORT` (default `8080`) and serves the unpacked WAR produced by the Maven Ant unzip step.
-
----
-
-## Security Notes
-
-- Authentication is JDBC-based: credentials are stored in the `users` table and roles in `user_roles`.
-- The `intercept-url` rule restricting `/admin/**` to `ROLE_ADMIN` is currently **commented out** in `spring-security.xml`. Any authenticated user can reach all admin endpoints. Re-enable it before deploying to a production environment.
-- Form submission requires Spring Security's CSRF protection, which is enabled by default under `auto-config="true"`.
-
----
-
-## Testing
-
-The test suite uses JUnit 4, DBUnit with an HSQLDB in-memory database for DAO tests, and Selenium for browser-based UI tests. A sample DAO test is at `src/test/java/com/defermentsystem/repository/DeferralJdbcDaoSupportTest.java`.
-
-The repository tests create their own in-memory HSQLDB tables from `src/test/resources/test-schema.sql`; DBUnit loads the existing dataset before each test. Run them with Java 8:
-
-```powershell
-mvn '-Dtest=*JdbcDaoSupportTest' test
-```
-
-### Selenium UI tests
-
-The Selenium tests (`DeferralTest`, `LecturerTest`, `LoginTest`, `ModuleTest`, `ProgrammeTest`, `StudentSeleniumTest`) drive **headless Chrome** through the shared `HeadlessChromeDriver` helper, so no browser windows open. Chrome must be installed; Selenium Manager downloads the matching driver.
-
-They are excluded from the default `mvn package` build because they need the application running at `http://localhost:8080/SpringWebProject/` and the MySQL database from `prop.properties`. They use the existing `repository-context.xml`, not the in-memory repository-test database, and their DBUnit setup modifies that database, so use a dedicated test database. To include them:
-
-```bash
-mvn -Pui-tests clean package
-```
-
-`HeadlessChromeDriverTest` is a quick smoke test of the Chrome setup and runs in the default build. Some UI tests are known to fail (footer click interception, jQuery Mobile selects, validation-message checks).
-
-### Logging
-
-Log4j is configured in `src/main/resources/log4j.properties` (INFO to stdout) and `src/test/resources/log4j.properties` (WARN to stderr, with known-harmless DBUnit warnings suppressed). The known CGLIB warnings from `org.springframework.aop.framework.CglibAopProxy` are routed to `cglib-proxy-warnings.log` in the application's working directory, or `target/cglib-proxy-warnings.log` during tests, rather than the console. JavaMail debug output is disabled in `root-context.xml`.
-
-### Spring WebApplicationContext diagnostic
-
-`src/test/java/com/defermentsystem/context/WebApplicationContextDiagnosticTest.java` creates the Root context using the same two XML locations listed in `web.xml`, then initializes a `DispatcherServlet` named `mvc-dispatcher` so Spring loads its conventional MVC Child configuration.
-
-The diagnostic checks the Root/Child parent relationship and local bean registration, verifies that service and repository implementations are not duplicated across the contexts, checks that controllers and MVC handler mappings belong to the Child, and inspects dependency injection and repository transaction proxies. It also prints bean inventories and handler mappings to the test output.
-
-Run this diagnostic independently with:
-
-```bash
-mvn -Dtest=WebApplicationContextDiagnosticTest test
-```
-
-A successful run means the diagnostic's assertions passed for the configuration loaded by that test. It is separate from the Selenium browser tests and does not, by itself, establish that the complete web application has passed end-to-end testing.
-
-### Spring configuration checker
-
-From the project root, run the PowerShell checker with Maven and Java 8 configured (Maven uses `JAVA_HOME`):
-
-```powershell
-.\Check-Deferment-Configuration.ps1
-```
-
-The checker runs `StaticConfigurationTest` against the actual Spring XML and web descriptor, then runs `WebApplicationContextDiagnosticTest` to initialise the real Root and MVC Child contexts without a running Tomcat server. It checks context locations, component scans, explicit beans, local bean counts and separation, inherited beans, dependency injection, repository data sources and transaction advice, and MVC handler mappings.
-
-`PASS` means a check succeeded; `FAIL` means a required check failed; `WARNING` highlights something to review that does not necessarily prevent startup. The script returns a non-zero exit code if Maven or a required check fails. The semester repository currently has no transactional methods, so it is reported as a warning rather than required to have a transaction proxy. The checker does not modify configuration or application data, but Maven writes build output to `target/`. A local database configuration or `DATABASE_URL` is still needed for the Root context to start.
-
----
-
-## Author
-
-**Pio O'Connell**
+Pio O'Connell
 
 ## Repository
 
-[DefermentSystem on GitHub](https://github.com/pio-o-connell/Deferment.git)
+[Deferment on GitHub](https://github.com/pio-o-connell/Deferment)
