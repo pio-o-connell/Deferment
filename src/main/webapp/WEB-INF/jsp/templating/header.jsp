@@ -1,8 +1,14 @@
 <%@ include file="/WEB-INF/jsp/include.jsp"%> 
 <html>
-<c:url var="url" value="/j_spring_security_logout"></c:url>  
 <a href="<%= request.getContextPath() %>/home" class="ui-btn ui-icon-home ui-btn-icon-left">Home</a>
-<a href="${url}" class="ui-btn ui-icon-search ui-btn-icon-right">Log out</a> 
+<sec:authorize access="isAuthenticated()">
+	<form:form action="${pageContext.request.contextPath}/j_spring_security_logout" method="post">
+		<button type="submit" class="ui-btn ui-icon-search ui-btn-icon-right">Log out</button>
+	</form:form>
+</sec:authorize>
+<sec:authorize access="isAnonymous()">
+	<a href="<%= request.getContextPath() %>/login" class="ui-btn ui-icon-search ui-btn-icon-right">Log in</a>
+</sec:authorize>
 <a href="<%= request.getContextPath() %>/home" id="headerSpace">Home</a>
 <head>
 <title>Header</title>

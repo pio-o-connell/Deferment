@@ -12,7 +12,7 @@
 			<form:label path="studentId">
 				<font size="5">Enter Student ID</font>
 			</form:label>
-			<form:input path="studentId" placeholder="Your Student ID.." value="" />
+			<form:input path="studentId" readonly="true" />
 			<form:errors path="studentId" cssClass="error"
 				class="notification error" style="display:block"></form:errors>
 

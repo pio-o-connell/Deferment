@@ -21,6 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.mail.MailException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.validation.BindingResult;
@@ -50,6 +52,7 @@ import com.defermentsystem.exceptions.InvalidDeferralStateException;
 public class DeferralController {
 
 	private static final Logger logger = Logger.getLogger(DeferralController.class);
+	private static final long MAX_DOCUMENT_SIZE = 5L * 1024L * 1024L;
 
 	@Autowired
 	DeferralService deferralService;
@@ -138,10 +141,13 @@ public class DeferralController {
 	/*This method will display a View for the user to enter his/her student Id*/
 	
 	@RequestMapping(value = "/addModuleDeferralPage1", method = RequestMethod.GET)
-	public String addModuleDeferralPage1(ModelMap model) {
+	public String addModuleDeferralPage1(Principal principal, ModelMap model) {
+		requireStudent(principal, null);
 		List<Module> listModules = moduleService.listModules();
 		model.addAttribute("moduleList",listModules );
-		model.addAttribute("deferral", new Deferral());
+		Deferral deferral = new Deferral();
+		deferral.setStudentId(principal.getName());
+		model.addAttribute("deferral", deferral);
 		return "newModuleDeferralPage1";
 	}
 	
@@ -151,7 +157,9 @@ public class DeferralController {
 	
 	@RequestMapping(value = "/addModuleDeferralPage1", method = RequestMethod.POST)
 	public String displayModuleDeferralPage1(
-			@ModelAttribute("deferral") @Valid Deferral deferral,BindingResult result, ModelMap model) {
+			@ModelAttribute("deferral") @Valid Deferral deferral, BindingResult result,
+			Principal principal, ModelMap model) {
+		requireStudent(principal, deferral.getStudentId());
 
 		if (result.hasErrors()) {
 			return "newModuleDeferralPage1";
@@ -159,7 +167,7 @@ public class DeferralController {
 		
 		//Get the student's FirstName,LastName and Registered Modules
 		try{
-		String studentId=deferral.getStudentId();
+		String studentId=principal.getName();
 		List<Module> listStudentModules = moduleService.listStudentModules(studentId);
 		Student student=studentService.getStudent(studentId);
 		model.addAttribute("studentFirstName",student.getFirstName());
@@ -182,7 +190,8 @@ public class DeferralController {
 	@RequestMapping(value = "/addModuleDeferralPage2", method = RequestMethod.POST)
 	public String displayModuleDeferralPage2(
 			@ModelAttribute("deferral") Deferral deferral,@RequestParam("file") MultipartFile file,
-			BindingResult result, ModelMap model) {
+			BindingResult result, Principal principal, ModelMap model) {
+		requireStudent(principal, deferral.getStudentId());
 		if (result.hasErrors()) {
 			model.addAttribute("message", "Creation of deferral failed. Check the submitted information.");
 			return "displayError";
@@ -192,12 +201,12 @@ public class DeferralController {
 		Student student;
 		int crnNumber;
 		try {
-			validateImage(file);
+			byte[] document = validateImage(file);
 			crnNumber = Integer.parseInt(deferral.getProgrammeId());
 			module = moduleService.getModuleByName(deferral.getModuleId(), crnNumber);
 			student = studentService.getStudent(deferral.getStudentId());
 			deferralService.submitModuleDeferral(deferral.getStudentId(), module.getModuleId(),
-					crnNumber, file.getBytes(), uploadDirectory());
+					crnNumber, document, uploadDirectory());
 		} catch (FormUploadException | IllegalArgumentException e) {
 			model.addAttribute("message", "Creation of deferral failed. Check the selected module and PDF.");
 			logger.warn("Module deferral validation failed", e);
@@ -220,10 +229,28 @@ public class DeferralController {
 		return "displayDeferrals";
 	}
 
-	private void validateImage(MultipartFile image) {
-		if (image.isEmpty() || !"application/pdf".equalsIgnoreCase(image.getContentType())) {
-			throw new FormUploadException("Only non-empty PDFs are accepted.");
+	private byte[] validateImage(MultipartFile image) throws IOException {
+		if (image == null || image.isEmpty() || image.getSize() > MAX_DOCUMENT_SIZE) {
+			throw new FormUploadException("A PDF document up to 5 MB is required.");
 		}
+		byte[] document = image.getBytes();
+		if (document.length < 10 || document[0] != '%' || document[1] != 'P'
+				|| document[2] != 'D' || document[3] != 'F' || document[4] != '-') {
+			throw new FormUploadException("The uploaded content is not a PDF document.");
+		}
+		int eofStart = Math.max(0, document.length - 1024);
+		boolean hasEndMarker = false;
+		for (int i = eofStart; i <= document.length - 5; i++) {
+			if (document[i] == '%' && document[i + 1] == '%' && document[i + 2] == 'E'
+					&& document[i + 3] == 'O' && document[i + 4] == 'F') {
+				hasEndMarker = true;
+				break;
+			}
+		}
+		if (!hasEndMarker) {
+			throw new FormUploadException("The uploaded PDF is incomplete.");
+		}
+		return document;
 	}
 
 	private Path uploadDirectory() throws IOException {
@@ -231,7 +258,7 @@ public class DeferralController {
 		if (root == null) {
 			throw new IOException("The deployed application has no filesystem path for uploaded forms.");
 		}
-		return Paths.get(root, "resources", "form", "uploadedForms");
+		return Paths.get(root, "WEB-INF", "uploadedForms");
 	}
 	
 
@@ -239,10 +266,13 @@ public class DeferralController {
 	/*This method will display a View for the user to enter his/her student Id*/
 	
 	@RequestMapping(value = "/addProgrammeDeferralPage1", method = RequestMethod.GET)
-	public String addProgrammeDeferralPage1(ModelMap model) {
+	public String addProgrammeDeferralPage1(Principal principal, ModelMap model) {
+		requireStudent(principal, null);
 		List<Programme> listProgrammes = programmeService.listProgrammes();
 		model.addAttribute("programmeList",listProgrammes );
-		model.addAttribute("deferral", new Deferral());
+		Deferral deferral = new Deferral();
+		deferral.setStudentId(principal.getName());
+		model.addAttribute("deferral", deferral);
 		return "newProgrammeDeferralPage1";
 	}
 	
@@ -252,7 +282,9 @@ public class DeferralController {
 	
 	@RequestMapping(value = "/addProgrammeDeferralPage1", method = RequestMethod.POST)
 	public String displayProgrammeDeferralPage1(
-			@ModelAttribute("deferral")  @Valid  Deferral deferral,BindingResult result, ModelMap model) {
+			@ModelAttribute("deferral") @Valid Deferral deferral, BindingResult result,
+			Principal principal, ModelMap model) {
+		requireStudent(principal, deferral.getStudentId());
 
 		if (result.hasErrors()) {
 			return "newProgrammeDeferralPage1";
@@ -260,7 +292,7 @@ public class DeferralController {
 		
 		//Get the student's FirstName,LastName and Registered Programme
 		try{
-		String studentId=deferral.getStudentId();
+		String studentId=principal.getName();
 		Student student=studentService.getStudent(studentId);
 		model.addAttribute("studentFirstName",student.getFirstName());
 		model.addAttribute("studentLastName",student.getLastName());
@@ -284,7 +316,8 @@ public class DeferralController {
 	@RequestMapping(value = "/addProgrammeDeferralPage2", method = RequestMethod.POST)
 	public String displayProgrammeDeferralPage2(
 			@ModelAttribute("deferral") Deferral deferral,@RequestParam("file") MultipartFile file,
-			BindingResult result, ModelMap model) {
+			BindingResult result, Principal principal, ModelMap model) {
+		requireStudent(principal, deferral.getStudentId());
 
 		if (result.hasErrors()) {
 			model.addAttribute("message", "Creation of deferral failed. Check the submitted information.");
@@ -292,10 +325,10 @@ public class DeferralController {
 		}
 		Student student;
 		try {
-			validateImage(file);
+			byte[] document = validateImage(file);
 			student = studentService.getStudent(deferral.getStudentId());
 			deferralService.submitProgrammeDeferral(deferral.getStudentId(), deferral.getProgrammeId(),
-					file.getBytes(), uploadDirectory());
+					document, uploadDirectory());
 		} catch (FormUploadException | IllegalArgumentException e) {
 			model.addAttribute("message", "Creation of deferral failed. Check the selected programme and PDF.");
 			logger.warn("Programme deferral validation failed", e);
@@ -318,7 +351,7 @@ public class DeferralController {
 	}
 	
 
-	@RequestMapping(value= "/delete/id/{id}", method = RequestMethod.GET)
+	@RequestMapping(value= "/delete/id/{id}", method = RequestMethod.POST)
 	public String deleteStudentById(@PathVariable int id, ModelMap model){
 		Deferral deferral = deferralService.getDeferral(id);
 		deferralService.deleteDeferralById(id);
@@ -334,8 +367,9 @@ public class DeferralController {
 	
 
 	@RequestMapping(value = "/modify/id/{id}", method = RequestMethod.GET) 
-	public String modifyDeferral(@PathVariable int id, ModelMap model) { 
+	public String modifyDeferral(@PathVariable int id, Principal principal, ModelMap model) {
 		Deferral deferralModify=deferralService.getDeferral(id);
+		assertCanAccessDeferral(principal, deferralModify);
 		List<Module> listModules = moduleService.listModules();
 		model.addAttribute("moduleList",listModules );
 		model.addAttribute("message", "Deferal with id "+ id +" can now be modified");
@@ -346,8 +380,8 @@ public class DeferralController {
 	public String decideDeferral(@PathVariable int id, @RequestParam("approval") String approval,
 			@RequestParam(value="rejectionReason", required=false) String rejectionReason,
 			Principal principal, ModelMap model) {
-		if (principal == null || !DeferralService.DECISION_LECTURER_ID.equals(principal.getName())) {
-			throw new AccessDeniedException("Only lecturer L001 may decide deferrals.");
+		if (principal == null) {
+			throw new AccessDeniedException("An authenticated lecturer or administrator is required.");
 		}
 		try {
 			deferralService.decideDeferral(id, principal.getName(), approval, rejectionReason);
@@ -382,44 +416,90 @@ public class DeferralController {
 	@RequestMapping(value = "/downloadForm/id/{id}", method = RequestMethod.GET) 
 	public @ResponseBody void downloadWithdrawalForm(@PathVariable int id, HttpServletRequest request, HttpServletResponse response) {   
 		try {
-	 
-		// set the path file
-		File fullPath = new File(servletContext.getRealPath("/")+"/resources/form/uploadedForms");
-        File downloadFile = new File(fullPath+"/"+id + ".pdf");
-        FileInputStream inputStream = new FileInputStream(downloadFile);
-       
-        // get MIME type of the file
-        String mimeType = "application/pdf";         
- 
-        // set content attributes for the response
-        response.setContentType(mimeType);
-        response.setContentLength((int) downloadFile.length());
- 
-        // set headers for the response
-        String headerKey = "Content-Disposition";
-        String headerValue = String.format("attachment; filename=\"%s\"", downloadFile.getName());
-        response.setHeader(headerKey, headerValue);
- 
-        // get output stream of the response
-        OutputStream outStream = response.getOutputStream();
- 
-        byte[] buffer = new byte[1024];
-        int bytesRead = -1;
- 
-        // write bytes read from the input stream into the output stream
-        while ((bytesRead = inputStream.read(buffer)) != -1) {
-            outStream.write(buffer, 0, bytesRead);
-        }		   
- 
-        inputStream.close();
-        outStream.close();
-        
+			Principal principal = request.getUserPrincipal();
+			Deferral deferral = deferralService.getDeferral(id);
+			assertCanAccessDeferral(principal, deferral);
+			String applicationRoot = servletContext.getRealPath("/");
+			if (applicationRoot == null) {
+			response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+			return;
+			}
+			File uploadDirectory = new File(applicationRoot, "WEB-INF/uploadedForms").getCanonicalFile();
+			File downloadFile = new File(uploadDirectory, id + ".pdf").getCanonicalFile();
+			if (!downloadFile.toPath().startsWith(uploadDirectory.toPath()) || !downloadFile.isFile()) {
+			response.sendError(HttpServletResponse.SC_NOT_FOUND);
+			return;
+			}
+			response.setContentType("application/pdf");
+			response.setContentLength((int) downloadFile.length());
+			response.setHeader("Content-Disposition",
+				String.format("attachment; filename=\"%s\"", downloadFile.getName()));
+			response.setHeader("X-Content-Type-Options", "nosniff");
+			response.setHeader("Cache-Control", "private, no-store");
+			try (FileInputStream inputStream = new FileInputStream(downloadFile);
+				OutputStream outStream = response.getOutputStream()) {
+			byte[] buffer = new byte[8192];
+			int bytesRead;
+			while ((bytesRead = inputStream.read(buffer)) != -1) {
+				outStream.write(buffer, 0, bytesRead);
+			}
+			outStream.flush();
+			}
 		} catch (FileNotFoundException e) {
-			e.printStackTrace();
+			try {
+			response.sendError(HttpServletResponse.SC_NOT_FOUND);
+			} catch (IOException responseError) {
+			logger.error("Could not report a missing supporting document", responseError);
+			}
 		} catch (IOException e) {
-			e.printStackTrace();
-		} 
+			logger.error("Could not read the requested supporting document", e);
+			if (!response.isCommitted()) {
+			try {
+				response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+			} catch (IOException responseError) {
+				logger.error("Could not report a supporting-document download failure", responseError);
+			}
+			}
+		}
 	} 
+
+	private void requireStudent(Principal principal, String submittedStudentId) {
+		if (principal == null || principal.getName() == null
+				|| (submittedStudentId != null && !principal.getName().equals(submittedStudentId))) {
+			throw new AccessDeniedException("Students may submit or view only their own deferrals.");
+		}
+	}
+
+	private void assertCanAccessDeferral(Principal principal, Deferral deferral) {
+		if (principal == null || deferral == null) {
+			throw new AccessDeniedException("An authenticated user with permission is required.");
+		}
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		if (hasAuthority(authentication, "ROLE_ADMIN")) {
+			return;
+		}
+		if (hasAuthority(authentication, "ROLE_LECTURER")
+				&& principal.getName().equals(deferral.getLectId())) {
+			return;
+		}
+		if (hasAuthority(authentication, "ROLE_USER")
+				&& principal.getName().equals(deferral.getStudentId())) {
+			return;
+		}
+		throw new AccessDeniedException("You are not authorised to access this deferral.");
+	}
+
+	private boolean hasAuthority(Authentication authentication, String authority) {
+		if (authentication == null || authentication.getAuthorities() == null) {
+			return false;
+		}
+		for (org.springframework.security.core.GrantedAuthority granted : authentication.getAuthorities()) {
+			if (authority.equals(granted.getAuthority())) {
+				return true;
+			}
+		}
+		return false;
+	}
 	
 	
 }

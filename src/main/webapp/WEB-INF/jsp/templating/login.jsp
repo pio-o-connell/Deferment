@@ -10,6 +10,9 @@
 	</c:if>
 		
 <form name="f" action="<c:url value='/j_spring_security_check'/>" method="POST">
+  <c:if test="${not empty _csrf}">
+    <input type="hidden" name="${_csrf.parameterName}" value="${_csrf.token}" />
+  </c:if>
 
   <div class="ui-field-contain">
     <label for="fullname">Username:</label>

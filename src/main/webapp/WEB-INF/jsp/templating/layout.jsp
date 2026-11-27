@@ -62,50 +62,38 @@ margin: 16px; }
 </div>
 	
 	<div class="menuPosition">
- <div data-role="collapsible">
-    <h1 data-icon="search">Add New</h1>
-    <ul data-role="listview" data-inset="true">
-       <li><a href="<%= request.getContextPath() %>/admin/lecturer/addNew">Lecturer</a></li>
-      <li><a href="<%= request.getContextPath() %>/admin/module/addNew">Module</a></li>
-      <li><a href="<%= request.getContextPath() %>/admin/programme/addNew">Programme</a></li>
-      <li><a href="<%= request.getContextPath() %>/admin/student/addNew">Student</a></li>
- 	</ul>     
-  </div>
-  
-
-  
-  
-  <div data-role="collapsible">
-    <h1 data-icon="search">List All</h1>
-    <ul data-role="listview" data-inset="true">
-      <li><a href="<%= request.getContextPath() %>/admin/deferral/listall">Deferrals</a></li>
-      <li><a href="<%= request.getContextPath() %>/admin/lecturer/listall">Lecturers</a></li>
-      <li><a href="<%= request.getContextPath() %>/admin/module/listall">Modules</a></li>
-      <li><a href="<%= request.getContextPath() %>/admin/programme/listall">Programmes</a></li>
-      <li><a href="<%= request.getContextPath() %>/admin/student/listall">Students</a></li>
- 	</ul>     
-  </div>
-  
-  <div data-role="collapsible">
-
-    <h1 data-icon="search">Advanced Search</h1>
-    <ul data-role="listview" data-inset="true">
-      <li><a href="<%= request.getContextPath() %>/admin/deferral/advancedlist">Deferral</a></li>
- 	  <li><a href="<%= request.getContextPath() %>/admin/lecturer/advancedlist">Lecturer</a></li>
- 	  <li><a href="<%= request.getContextPath() %>/admin/module/advancedlist">Module</a></li>
- 	  <li><a href="<%= request.getContextPath() %>/admin/programme/details">Programme By Id</a></li>
- 	  <li><a href="<%= request.getContextPath() %>/admin/programme/ofStudent">Student's Programme</a></li>
- 	  <li><a href="<%= request.getContextPath() %>/admin/student/advancedlist">Student By Id</a></li>
- 	</ul>     
-  </div>
-  
- <div data-role="collapsible">
-    <h1 data-icon="search">Apply for Deferral</h1>
-    <ul data-role="listview" data-inset="true">
-      <li><a href="<%= request.getContextPath() %>/admin/deferral/addModuleDeferralPage1">Deferral by Module</a></li>
-      <li><a href="<%= request.getContextPath() %>/admin/deferral/addProgrammeDeferralPage1">Deferral by Programme</a></li>
-     </ul>     
-  </div> 
+		<sec:authorize access="isAnonymous()">
+			<ul data-role="listview" data-inset="true">
+				<li><a href="<c:url value='/home'/>">Home</a></li>
+				<li><a href="<c:url value='/login'/>">Log in</a></li>
+				<li><a href="<c:url value='/home/downloadForm'/>">Download deferral form</a></li>
+			</ul>
+		</sec:authorize>
+		<sec:authorize access="hasRole('ROLE_USER')">
+			<ul data-role="listview" data-inset="true">
+				<li><a href="<c:url value='/student/dashboard'/>">Student dashboard</a></li>
+				<li><a href="<c:url value='/admin/deferral/addModuleDeferralPage1'/>">Submit module deferral</a></li>
+				<li><a href="<c:url value='/admin/deferral/addProgrammeDeferralPage1'/>">Submit programme deferral</a></li>
+				<li><a href="<c:url value='/student/applications'/>">My applications</a></li>
+			</ul>
+		</sec:authorize>
+		<sec:authorize access="hasRole('ROLE_LECTURER')">
+			<ul data-role="listview" data-inset="true">
+				<li><a href="<c:url value='/lecturer/dashboard'/>">Lecturer dashboard</a></li>
+				<li><a href="<c:url value='/lecturer/pending'/>">Pending applications</a></li>
+				<li><a href="<c:url value='/lecturer/processed'/>">Processed applications</a></li>
+			</ul>
+		</sec:authorize>
+		<sec:authorize access="hasRole('ROLE_ADMIN')">
+			<ul data-role="listview" data-inset="true">
+				<li><a href="<c:url value='/admin/dashboard'/>">Administrator dashboard</a></li>
+				<li><a href="<c:url value='/admin/student/listall'/>">Students</a></li>
+				<li><a href="<c:url value='/admin/lecturer/listall'/>">Lecturers</a></li>
+				<li><a href="<c:url value='/admin/module/listall'/>">Modules</a></li>
+				<li><a href="<c:url value='/admin/programme/listall'/>">Programmes</a></li>
+				<li><a href="<c:url value='/admin/deferral/listall'/>">Deferrals</a></li>
+			</ul>
+		</sec:authorize>
 		
   </div>  
   

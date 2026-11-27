@@ -112,7 +112,7 @@ public class LecturerController {
 		}
 		
 		
-		@RequestMapping(value= "/delete/id/{id}", method = RequestMethod.GET)
+		@RequestMapping(value= "/delete/id/{id}", method = RequestMethod.POST)
 		public String deleteLecturerById(@PathVariable String id, ModelMap model){
 			lecturerService.deleteLecturer(id);
 			model.addAttribute("message", "Lecturer "+ id + " has been deleted");

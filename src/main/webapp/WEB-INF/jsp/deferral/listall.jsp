@@ -61,9 +61,9 @@
 						href="<%= request.getContextPath() %>/admin/deferral/downloadForm/id/${deferral.defId}"
 						download target="_blank" class="ui-btn ui-corner-all">Download
 							Withdrawal Form</a></td>
-					<td><a
-						href="<%= request.getContextPath() %>/admin/deferral/delete/id/${deferral.defId}"
-						class="ui-btn ui-corner-all">Delete</a></td>
+					<td><form:form method="post" action="${pageContext.request.contextPath}/admin/deferral/delete/id/${deferral.defId}">
+						<button type="submit">Delete</button>
+					</form:form></td>
 					<td><c:if test="${deferral.approval=='False'}"><a
 						href="<%= request.getContextPath() %>/admin/deferral/modify/id/${deferral.defId}"
 						class="ui-btn ui-corner-all">Decide</a></c:if></td>

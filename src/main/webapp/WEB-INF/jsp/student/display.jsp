@@ -110,9 +110,8 @@
 		<p>Are you sure you want to delete this student?</p>
 		<a href="#"
 			class="ui-btn ui-corner-all ui-shadow ui-btn-inline ui-btn-b"
-			data-rel="back">Cancel</a> <a
-			href="<%= request.getContextPath() %>/admin/student/delete/id/${id}"
-			class="ui-btn ui-corner-all ui-shadow ui-btn-inline ui-btn-b"
-			data-transition="flow">Delete</a>
+			data-rel="back">Cancel</a> 			<form:form method="post" action="${pageContext.request.contextPath}/admin/student/delete/id/${id}">
+				<button type="submit" class="ui-btn ui-corner-all ui-shadow ui-btn-inline ui-btn-b">Delete</button>
+			</form:form>
 	</div>
 </div>

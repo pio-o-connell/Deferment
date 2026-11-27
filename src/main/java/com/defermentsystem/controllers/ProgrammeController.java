@@ -74,7 +74,7 @@ public class ProgrammeController {
 
 
 
-	@RequestMapping(value="/delete/{programmeId}",method=RequestMethod.GET)
+	@RequestMapping(value="/delete/{programmeId}",method=RequestMethod.POST)
 	public String delete(@PathVariable String programmeId,ModelMap model){
 		List<Programme> progList =programmeService.deleteProgramme(programmeId);
 		model.addAttribute("programmes", progList);

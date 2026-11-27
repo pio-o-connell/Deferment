@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -79,14 +80,14 @@ public class DeferralControllerTest {
 				return root;
 			}
 		});
-		MockMultipartFile document = new MockMultipartFile("file", "form.pdf", "application/pdf", new byte[] {1});
+		MockMultipartFile document = pdfDocument();
 		Deferral module = new Deferral();
 		module.setStudentId("R0004444");
 		module.setModuleId("Module");
 		module.setProgrammeId("24248");
 		ModelMap moduleModel = new ModelMap();
 		assertEquals("displayError", controller.displayModuleDeferralPage2(module, document,
-				new BeanPropertyBindingResult(module, "deferral"), moduleModel));
+				new BeanPropertyBindingResult(module, "deferral"), principal("R0004444"), moduleModel));
 		assertTrue(moduleModel.containsKey("message"));
 
 		Deferral programme = new Deferral();
@@ -94,14 +95,14 @@ public class DeferralControllerTest {
 		programme.setProgrammeId("KCMSD_Y5");
 		ModelMap programmeModel = new ModelMap();
 		assertEquals("displayError", controller.displayProgrammeDeferralPage2(programme, document,
-				new BeanPropertyBindingResult(programme, "deferral"), programmeModel));
+				new BeanPropertyBindingResult(programme, "deferral"), principal("R0004444"), programmeModel));
 		assertTrue(programmeModel.containsKey("message"));
 		assertEquals(2, calls[0]);
 		assertFalse(mail.sent);
 	}
 
 	@Test
-	public void decisionRequiresLoggedInL001AndPassesReasonToService() {
+	public void decisionRequiresAuthenticatedUserAndPassesReasonToService() {
 		final Object[][] decision = new Object[1][];
 		DeferralService service = proxy(DeferralService.class, new InvocationHandler() {
 			public Object invoke(Object proxy, Method method, Object[] args) {
@@ -120,7 +121,7 @@ public class DeferralControllerTest {
 		});
 		DeferralController controller = new DeferralController();
 		ReflectionTestUtils.setField(controller, "deferralService", service);
-		for (Principal principal : new Principal[] { null, principal("L002") }) {
+		for (Principal principal : new Principal[] { null }) {
 			try {
 				controller.decideDeferral(1, "Rejected", "reason", principal, new ModelMap());
 				fail("Expected access denial");
@@ -175,12 +176,50 @@ public class DeferralControllerTest {
 		deferral.setStudentId("R0004444");
 		deferral.setProgrammeId("KCMSD_Y5");
 		ModelMap model = new ModelMap();
-		MockMultipartFile document = new MockMultipartFile("file", "form.pdf", "application/pdf", new byte[] {1});
+		MockMultipartFile document = pdfDocument();
 		assertEquals("displayDeferrals", controller.displayProgrammeDeferralPage2(deferral, document,
-				new BeanPropertyBindingResult(deferral, "deferral"), model));
+				new BeanPropertyBindingResult(deferral, "deferral"), principal("R0004444"), model));
 		assertEquals(1, submissions[0]);
 		assertTrue(model.get("message").toString().contains("saved"));
 		assertTrue(model.get("message").toString().contains("notification"));
+	}
+
+	@Test
+	public void rejectsFakePdfContentBeforeCreatingSubmission() throws IOException {
+		final int[] submissions = new int[1];
+		DeferralService deferrals = proxy(DeferralService.class, new InvocationHandler() {
+			public Object invoke(Object proxy, Method method, Object[] args) {
+				if ("submitProgrammeDeferral".equals(method.getName())) {
+					submissions[0]++;
+				}
+				throw new AssertionError("Submission should be rejected before persistence.");
+			}
+		});
+		StudentService students = proxy(StudentService.class, new InvocationHandler() {
+			public Object invoke(Object proxy, Method method, Object[] args) {
+				return new Student("R0004444", "Test", "Student", "test@example.test");
+			}
+		});
+		DeferralController controller = new DeferralController();
+		ReflectionTestUtils.setField(controller, "deferralService", deferrals);
+		ReflectionTestUtils.setField(controller, "studentService", students);
+		ReflectionTestUtils.setField(controller, "mail", new RecordingMail());
+		ReflectionTestUtils.setField(controller, "servletContext", new MockServletContext() {
+			@Override
+			public String getRealPath(String path) {
+				return temporaryFolder.getRoot().getAbsolutePath();
+			}
+		});
+		Deferral deferral = new Deferral();
+		deferral.setStudentId("R0004444");
+		deferral.setProgrammeId("KCMSD_Y5");
+		ModelMap model = new ModelMap();
+		MockMultipartFile spoofedPdf = new MockMultipartFile("file", "form.pdf",
+				"application/pdf", "not a PDF".getBytes(StandardCharsets.US_ASCII));
+
+		assertEquals("displayError", controller.displayProgrammeDeferralPage2(deferral, spoofedPdf,
+				new BeanPropertyBindingResult(deferral, "deferral"), principal("R0004444"), model));
+		assertEquals(0, submissions[0]);
 	}
 
 	@Test
@@ -233,8 +272,9 @@ public class DeferralControllerTest {
 		resolver.setSuffix(".jsp");
 		MockMvc mvc = MockMvcBuilders.standaloneSetup(controller).setViewResolvers(resolver).build();
 		assertEquals(200, mvc.perform(fileUpload("/admin/deferral/addModuleDeferralPage2")
-				.file(new MockMultipartFile("file", "form.pdf", "application/pdf", new byte[] {1}))
-				.param("studentId", "R0004444").param("moduleId", "Module").param("programmeId", "24248"))
+				.file(pdfDocument())
+				.param("studentId", "R0004444").param("moduleId", "Module").param("programmeId", "24248")
+				.principal(principal("R0004444")))
 				.andReturn().getResponse().getStatus());
 		assertEquals(1, submissions[0]);
 		assertEquals(200, mvc.perform(post("/admin/deferral/modify/id/1/decision")
@@ -254,6 +294,11 @@ public class DeferralControllerTest {
 				return username;
 			}
 		};
+	}
+
+	private MockMultipartFile pdfDocument() {
+		return new MockMultipartFile("file", "form.pdf", "application/pdf",
+				"%PDF-1.4\n%%EOF".getBytes(StandardCharsets.US_ASCII));
 	}
 
 	private <T> T proxy(Class<T> type, InvocationHandler handler) {

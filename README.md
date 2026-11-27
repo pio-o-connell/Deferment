@@ -57,6 +57,7 @@ This document describes the **current local implementation**. It distinguishes i
     - [Spring application-context diagnostic](#spring-application-context-diagnostic)
     - [Combined configuration checker](#combined-configuration-checker)
     - [Selenium UI tests](#selenium-ui-tests)
+    - [GitHub Actions](#github-actions)
     - [Logging](#logging)
   - [19. Security](#19-security)
     - [Authentication and authorisation](#authentication-and-authorisation)
@@ -109,16 +110,24 @@ The project remains a conventional Java 8 Spring MVC 4, Spring JDBC, JSP, JSTL, 
 - HSQLDB-based DAO and transaction integration testing
 - Selenium browser-test classes
 - Spring Root/child context diagnostics
+- Role-aware login routing and student, lecturer, and administrator dashboards
+- Server-side role restrictions, student ownership checks, and coordinator-scoped lecturer decisions
+- CSRF protection and POST-only state-changing routes
+- External SMTP configuration with a test-recipient override
+- BCrypt migration for legacy plaintext passwords after successful authentication
+- PDF size/signature checks and protected document storage/downloads
 
 ### Outstanding or limited
 
 - Crash-safe coordination of PDF files and database commits
 - Durable email retries
 - MySQL concurrency verification
-- Full administrator URL enforcement
 - A separate decision-history schema
 - A document-reference database table
-- Stronger upload-content validation
+- Durable notification retries and a transactional outbox
+- A persistent audit history
+- MySQL concurrency verification
+- Comprehensive CRUD and all-role authentication regression coverage
 
 ---
 
@@ -281,7 +290,7 @@ The MVC child has one annotation-driven declaration; the duplicate plain declara
 
 <a id="student-submission"></a>
 
-Start at `/admin/deferral/addModuleDeferralPage1`, relative to the application context.
+After signing in, a student is directed to `/student/dashboard`. Select **Submit a module deferral** to open `/admin/deferral/addModuleDeferralPage1`, relative to the application context.
 
 The current implementation, represented by `DeferralController.displayModuleDeferralPage2(...)`, performs these steps:
 
@@ -296,7 +305,7 @@ The service rolls back the database insert if writing the document fails. It reg
 
 ### Programme deferral submission
 
-Start at `/admin/deferral/addProgrammeDeferralPage1`, relative to the application context.
+From `/student/dashboard`, select **Submit a programme deferral** to open `/admin/deferral/addProgrammeDeferralPage1`.
 
 The current implementation, represented by `DeferralController.displayProgrammeDeferralPage2(...)`, performs these steps:
 
@@ -319,11 +328,12 @@ An HSQLDB integration test checks successful creation of both records and files;
 
 `DeferralServiceImpl.decideDeferral(...)` implements:
 
-1. Require the authenticated decision maker to be `L001`, the current business rule.
+1. Require the authenticated account to match the supplied decision-maker identity.
 2. Validate the decision and optional rejection reason, and retrieve the deferral.
 3. Verify that the status is pending.
-4. Conditionally update the status to `True` or `Rejected`, recording the decision lecturer and optional rejection reason.
-5. Require exactly one updated row.
+4. Require the assigned lecturer for lecturer decisions; administrators may oversee decisions.
+5. Conditionally update the status to `True` or `Rejected`, recording the decision lecturer and optional rejection reason.
+6. Require exactly one updated row.
 
 Current statuses are:
 
@@ -333,16 +343,21 @@ Current statuses are:
 | `True` | Approved |
 | `Rejected` | Rejected |
 
-The controller obtains the authenticated username and accepts decisions only from `L001`, even when the deferral's programme coordinator is another lecturer. The service enforces the same rule. Decisions are submitted by POST with CSRF protection; the former state-changing GET routes have been removed.
+The controller obtains the authenticated username. The service requires a lecturer to match the deferral's assigned lecturer; an administrator may decide any pending deferral. Decisions are submitted by POST with CSRF protection; the former state-changing GET routes have been removed.
 
 The conditional SQL update requires the row still to be pending, so a stale decision cannot overwrite a completed one. A concurrent HSQLDB test checks that two competing decisions cannot both succeed; this is not proof of MySQL concurrency behaviour. A missing row is translated into a business exception.
 
 An individual decision updates only the selected deferral; it does not remove programme registrations. Legacy bulk approval DAO methods remain but are not exposed through the decision service or controller.
 
-The schema has no:
+### Role walkthroughs
 
-- Separate decision-history or audit table
-- Document-reference table
+**Student:** sign in with a student account whose username matches `Student_ID` → use the student dashboard to submit a module or programme request → check its pending/approved/rejected status under **My applications** → download only documents belonging to that account → log out.
+
+**Lecturer:** sign in with a lecturer account whose username matches `Lect_ID` → use **Pending applications** to review assigned requests and supporting documents → approve, or reject with an optional reason → confirm the processed request in **Processed applications** → log out.
+
+**Administrator:** sign in with an individually provisioned account carrying `ROLE_ADMIN` → use the administrator dashboard to manage students, lecturers, modules, programmes, and view all deferrals → log out. User/role administration and decision-history pages are not implemented; roles must be provisioned through a controlled database process.
+
+The schema has no separate decision-history/audit table or document-reference table.
 
 ---
 
@@ -454,7 +469,7 @@ Supporting PDFs are stored below the web application resource directory as:
 resources/form/uploadedForms/<Def_ID>.pdf
 ```
 
-One generated PDF filename is used for a module deferral. Programme deferrals use one PDF for each generated deferral ID. The controller checks the submitted multipart content type for `application/pdf`; it does not verify PDF contents.
+One generated PDF filename is used for a module deferral. Programme deferrals use one PDF for each generated deferral ID. Files are stored below `WEB-INF/uploadedForms` under integer-generated names, outside public static resources. Uploads are limited to 5 MB and checked for a `%PDF-` header and `%%EOF` marker; these checks do not replace full PDF parsing or malware scanning.
 
 The transactional service creates files without overwriting existing files and registers cleanup for files created by the submission if the transaction rolls back. Cleanup failures are logged. Files are written before commit and can be visible before it; a process crash, unknown transaction outcome, or failed cleanup can still leave files and database records inconsistent. The filesystem is not a transactional resource.
 
@@ -473,6 +488,7 @@ The following improvements are **not implemented**:
 - Recover from process crashes or failed rollback cleanup
 - Provide durable email delivery and retries
 - Store document metadata in a document-reference table
+- Write transactional audit/decision-history records
 
 An HSQLDB test covers a file collision and rollback cleanup; it cannot prove crash recovery or SMTP delivery.
 
@@ -493,7 +509,7 @@ An HSQLDB test covers a file collision and rollback cleanup; it cannot prove cra
 | `programmeSubmissionCommitsEveryRecordAndDocument()` | Submits a programme with two registered modules | Both generated records and their documents exist | Implemented and tested |
 | `documentFailureRollsBackProgrammeAndRemovesOnlyNewFiles()` | A later generated document collides with an existing file | Database rows roll back, the new file is removed, and the existing file remains unchanged | Implemented and tested |
 | `invalidRegistrationDoesNotCreateSubmission()` | Submits a mismatched module or a programme with no registrations | No deferrals or documents are created | Implemented and tested |
-| `onlyL001CanRejectAndOptionalReasonIsStored()` | Attempts a pending decision as another lecturer, then rejects as L001 | Unauthorised decision is rejected; lecturer and optional reason are stored | Implemented and tested |
+| `assignedLecturerCanRejectAndOptionalReasonIsStored()` | Attempts an unauthorised pending decision, then rejects with the assigned lecturer | Unauthorised decision is rejected; lecturer and optional reason are stored | Implemented and tested |
 | `concurrentDecisionsCannotBothSucceed()` | Competing approval and rejection on HSQLDB | Exactly one succeeds and its status and lecturer are stored | Implemented and tested on HSQLDB |
 
 ### Outstanding test coverage
@@ -503,7 +519,7 @@ An HSQLDB test covers a file collision and rollback cleanup; it cannot prove cra
 | Successful programme submission and generated records | Tested for a two-module programme |
 | Checked-exception rollback | File-collision `IOException` rollback tested; other checked failures not exhaustively tested |
 | Nonexistent deferral decision | Missing row is translated to a business exception; dedicated test outstanding |
-| Wrong lecturer deciding a pending deferral | L001-only policy tested at service and controller levels |
+| Wrong lecturer deciding a pending deferral | Assigned-lecturer scope is tested at service level |
 | Dedicated rejection success test | Optional reason and no-reason rejection tested |
 | Rejection failure after an earlier database write | Outstanding |
 | Concurrent approval/rejection attempts | Tested on HSQLDB; MySQL-specific verification outstanding |
@@ -561,7 +577,7 @@ Submission validation, database and file errors return an error view and do not 
 | Service-level transactions | Implemented for selected workflows |
 | Conditional decision updates | Implemented |
 | Approval and rejection states | Implemented |
-| Decision authorisation | Only authenticated `L001` can decide; this is a fixed policy, not coordinator-based ownership |
+| Decision authorisation | Lecturer identity must match the deferral's assigned lecturer; administrators may oversee decisions |
 | Failure-injection rollback tests | Implemented for selected workflows |
 | Dedicated concurrency tests | Conflicting decisions tested on HSQLDB; MySQL testing outstanding |
 | Checked-exception rollback tests | Document-collision rollback tested |
@@ -570,7 +586,7 @@ Submission validation, database and file errors return an error view and do not 
 | Rejection-reason persistence | Optional reason stored on the deferral |
 | Decision-history audit trail | Not implemented |
 | Separate document-reference table | Not implemented |
-| Full administrator URL enforcement | Outstanding |
+| Administrator URL enforcement | `/admin/**` management routes require `ROLE_ADMIN`; student deferral submissions and lecturer decision routes have more specific rules |
 
 ---
 
@@ -581,6 +597,8 @@ Submission validation, database and file errors return an error view and do not 
 Run `DatabaseSetup.sql` to create the MySQL schema.
 
 For an existing MySQL or PostgreSQL database, back it up and apply `add-deferral-decision-details.sql` **once** before running the updated application. It adds nullable `Decision_Lect_ID` and `Rejection_Reason` columns; existing decisions remain without recorded details. Do not apply it to a new database already created with the updated schema. The migration is not run automatically.
+
+For an existing MySQL database, also apply `add-password-hash-support.sql` once before password hashes are written, after taking a backup. For PostgreSQL, use `ALTER TABLE users ALTER COLUMN password TYPE VARCHAR(100);`. Successful authentication transparently upgrades legacy plaintext passwords to BCrypt; already encoded passwords continue to authenticate.
 
 The principal tables are:
 
@@ -678,6 +696,24 @@ Do not commit database credentials or SMTP credentials.
 
 The expected format is `postgres://user:password@host:port/database`. Set it in the deployment environment; a local `prop.properties` file is not required when it is supplied.
 
+### SMTP
+
+Configure SMTP outside source control. The application reads these environment variables (or corresponding lower-case properties such as `smtp.host`):
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `SMTP_HOST` | SMTP server | Empty; configure before sending |
+| `SMTP_PORT` | SMTP port | `25` |
+| `SMTP_USERNAME` / `SMTP_PASSWORD` | SMTP credentials | Empty |
+| `SMTP_AUTH` | SMTP authentication | `false` |
+| `SMTP_STARTTLS_ENABLE` | STARTTLS | `false` |
+| `SMTP_FROM` | Sender address | Empty; required |
+| `SMTP_ADMISSIONS_TO` | Normal admissions recipient | Empty; required outside test mode |
+| `SMTP_TEST_MODE` | Route notifications to test recipient | `false` |
+| `SMTP_TEST_RECIPIENT` | Test-only recipient override | Empty; required when test mode is enabled |
+
+For an explicitly authorized delivery test, set `SMTP_TEST_MODE=true` and `SMTP_TEST_RECIPIENT=connuineill@gmail.com`, configure a test SMTP account and sender, then submit synthetic data. Unit tests use a recording fake sender and verify the configured recipient; they do not send email. No live SMTP settings were present during this implementation, so real delivery has not been verified and no message was sent.
+
 ---
 
 <a id="building-and-running"></a>
@@ -721,6 +757,7 @@ mvn clean package
 ```
 
 This performs the default build and excludes browser UI tests.
+Latest local validation: `mvn clean package` succeeded with 76 tests, 0 failures, 0 errors, and 0 skipped.
 
 ### DAO integration tests
 
@@ -745,10 +782,18 @@ This runs `DeferralTransactionTest`, including:
 - `programmeSubmissionCommitsEveryRecordAndDocument`
 - `documentFailureRollsBackProgrammeAndRemovesOnlyNewFiles`
 - `invalidRegistrationDoesNotCreateSubmission`
-- `onlyL001CanRejectAndOptionalReasonIsStored`
+- `assignedLecturerCanRejectAndOptionalReasonIsStored`
 - `concurrentDecisionsCannotBothSucceed`
 
 `DeferralControllerTest` covers failure handling and MVC routes; `DeferralDecisionSecurityTest` checks the decision filter chain and CSRF token handling.
+
+### Authentication, authorization, and mail tests
+
+```powershell
+mvn "-Dtest=DeferralDecisionSecurityTest,RoleBasedAuthenticationSuccessHandlerTest,MailTest" test
+```
+
+`MailTest` verifies sender, recipient, subject, and student/module/programme content using a fake JavaMail sender; it does not verify SMTP connectivity or real delivery. `DeferralDecisionSecurityTest` exercises role routing, role URL restrictions, BCrypt upgrade from a legacy credential, and CSRF behavior.
 
 ### Static configuration test
 
@@ -797,6 +842,10 @@ The UI tests are excluded from the default Maven build. The shared `HeadlessChro
 
 The Selenium suite is not evidence that all transaction scenarios passed.
 
+### GitHub Actions
+
+`.github/workflows/maven.yml` runs `mvn test` on pushes and pull requests using Java 8, uploads Surefire reports, and does not configure production SMTP or database credentials. The workflow is committed locally but has not been run on GitHub because no push/deployment was authorized.
+
 ### Logging
 
 Log4j settings are in `src/main/resources/log4j.properties` (INFO to stdout) and `src/test/resources/log4j.properties` (WARN to stderr, with known DBUnit warnings suppressed). CGLIB proxy warnings are routed to `cglib-proxy-warnings.log` in the application's working directory, or `target/cglib-proxy-warnings.log` during tests. JavaMail debug output is disabled. A diagnostic result establishes only the checks actually run; the retained pre-refactor image is not a current test result.
@@ -809,30 +858,28 @@ Log4j settings are in `src/main/resources/log4j.properties` (INFO to stdout) and
 
 ### Authentication and authorisation
 
-Authentication and authorisation are separate concerns:
+Authentication and authorization are separate concerns:
 
 - Authentication verifies the username/password in `users`.
 - Authorisation assigns roles from `user_roles`.
 
-The intended `/admin/**` administrator restriction is **not currently active**: its `intercept-url` entry in `spring-security.xml` is commented out.
+The JDBC user-details service reads authorities from `user_roles`. Successful login routes administrators, lecturers, and students to their corresponding dashboards. Legacy plaintext passwords are upgraded to BCrypt after a successful login; existing BCrypt credentials are checked with the Spring Security 3.2 password-encoder API.
 
-The `/admin/deferral/modify/**` decision paths require authentication, and the controller and service limit decisions to `L001`. This is a fixed decision-maker rule, not coordinator-based ownership.
+The default chain requires `ROLE_ADMIN` for `/admin/**`, with explicit student-submission and document-download rules before that catch-all. A separate earlier chain allows lecturer/admin access to decision URLs; the controller/service enforce assigned-lecturer scope, and administrators may oversee decisions. Students can only submit as their own account and view/download their own deferrals. Lecturers see pending/processed applications assigned to their account.
 
-The other `/admin/**` paths have no active rule requiring authentication or `ROLE_ADMIN`. The login mechanism alone must not be treated as access protection; full administrator URL enforcement remains outstanding.
-
-CSRF protection is explicitly enabled for `/admin/deferral/modify/**` only. It is not enabled for the default security chain; other forms and state-changing routes still need security review.
+CSRF protection is enabled on both security chains. Logout is handled by Spring Security and invalidates the session. Destructive deferral and CRUD routes use POST. Role assignment and account creation are not exposed through a user interface: provision them through a controlled database process.
 
 ### Security limitations and outstanding work
 
-- Externalise SMTP configuration and credentials
-- Rotate any exposed SMTP credentials
 - Keep database credentials outside source control
 - Replace demonstration credentials before production use
 - Do not treat current sample credentials as production credentials
-- Strengthen PDF validation beyond the submitted content type
-- Inspect file names and file content where stronger upload enforcement is required
+- Complete live SMTP delivery verification and provide durable notification status/retry
+- Add audit history and MySQL-specific concurrency verification
+- Complete broad CRUD and all-role authentication regression coverage
+- Consider deeper PDF parsing and malware scanning
 
-The repository README intentionally does not reproduce passwords or credentials.
+The repository README intentionally does not reproduce passwords or credentials. SMTP host, credentials, sender, and recipient are environment-configured; no credentials are embedded in application configuration.
 
 ---
 
@@ -865,9 +912,10 @@ The existing JSP, JSTL, Apache Tiles, Spring MVC, Spring JDBC, and embedded WAR 
 
 - Some legacy DAO methods use `REQUIRES_NEW`.
 - Several unrelated CRUD DAO methods may commit independently.
-- PDF rollback cleanup is best effort and not crash-safe; SMTP delivery is not durable.
-- The `/admin/**` role restriction is not active.
-- Decision authorisation is fixed to `L001`, not configurable or coordinator-based.
+- PDF rollback cleanup is best effort and not crash-safe; SMTP delivery has no durable outbox or retry.
+- Audit/decision-history records and an administrative audit-history view are not implemented.
+- Decision authorization is scoped to the assigned lecturer, with administrator oversight.
+- User provisioning and role assignment require a controlled database process.
 - The README and tests should not be used to claim complete MySQL concurrency verification.
 - Selenium/UI test dependencies require a running application and dedicated database.
 - Older Java/Spring/JDBC/Tomcat versions are in use.
@@ -883,7 +931,10 @@ The existing JSP, JSTL, Apache Tiles, Spring MVC, Spring JDBC, and embedded WAR 
 Deferment/
 ├── pom.xml
 ├── DatabaseSetup.sql
+├── add-deferral-decision-details.sql
+├── add-password-hash-support.sql
 ├── Procfile
+├── .github/workflows/maven.yml
 ├── src/
 │   ├── main/
 │   │   ├── java/com/defermentsystem/
@@ -891,15 +942,17 @@ Deferment/
 │   │   │   ├── domain/             # Domain models and row mappers
 │   │   │   ├── exceptions/         # Application exceptions
 │   │   │   ├── repository/         # DAO interfaces and JDBC implementations
+│   │   │   ├── security/           # Login routing and legacy password migration
 │   │   │   └── service/            # Service interfaces and implementations
 │   │   ├── resources/
 │   │   │   ├── repository-context.xml # Repository and command-line context
 │   │   │   ├── databaseEntries.xml     # DBUnit seed data
 │   │   │   └── prop.properties        # Local database settings, if configured
 │   │   └── webapp/
-│   │       ├── resources/          # Static resources and uploaded forms
+│   │       ├── resources/          # Public static resources
 │   │       └── WEB-INF/
-│   │           ├── jsp/            # JSP views
+│   │           ├── jsp/            # JSP views, including role dashboards
+│   │           ├── uploadedForms/  # Protected generated-name supporting PDFs
 │   │           ├── root-context.xml
 │   │           ├── mvc-dispatcher-servlet.xml
 │   │           ├── spring-security.xml

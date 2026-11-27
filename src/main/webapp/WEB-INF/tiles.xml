@@ -16,6 +16,27 @@
         <put-attribute name="title" value="Home"></put-attribute>  
         <put-attribute name="body" value="/WEB-INF/jsp/home.jsp"></put-attribute>  
     </definition>
+
+    <definition extends="base.definition" name="studentDashboard">
+        <put-attribute name="title" value="Student dashboard"></put-attribute>
+        <put-attribute name="body" value="/WEB-INF/jsp/dashboard/student.jsp"></put-attribute>
+    </definition>
+    <definition extends="base.definition" name="lecturerDashboard">
+        <put-attribute name="title" value="Lecturer dashboard"></put-attribute>
+        <put-attribute name="body" value="/WEB-INF/jsp/dashboard/lecturer.jsp"></put-attribute>
+    </definition>
+    <definition extends="base.definition" name="administratorDashboard">
+        <put-attribute name="title" value="Administrator dashboard"></put-attribute>
+        <put-attribute name="body" value="/WEB-INF/jsp/dashboard/administrator.jsp"></put-attribute>
+    </definition>
+    <definition extends="base.definition" name="studentApplications">
+        <put-attribute name="title" value="My applications"></put-attribute>
+        <put-attribute name="body" value="/WEB-INF/jsp/dashboard/studentApplications.jsp"></put-attribute>
+    </definition>
+    <definition extends="base.definition" name="lecturerDeferrals">
+        <put-attribute name="title" value="Lecturer applications"></put-attribute>
+        <put-attribute name="body" value="/WEB-INF/jsp/dashboard/lecturerDeferrals.jsp"></put-attribute>
+    </definition>
     
      <!--  The Student Views -->
     

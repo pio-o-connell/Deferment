@@ -10,6 +10,9 @@ import java.util.List;
 import org.apache.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -127,9 +130,6 @@ public class DeferralServiceImpl implements DeferralService {
 	@Override
 	@Transactional(rollbackFor = Exception.class)
 	public void decideDeferral(int id, String lecturerId, String decision, String rejectionReason) {
-		if (!DECISION_LECTURER_ID.equals(lecturerId)) {
-			throw new InvalidDeferralStateException("Lecturer is not authorised to decide this deferral.");
-		}
 		if (!"True".equalsIgnoreCase(decision) && !"Rejected".equalsIgnoreCase(decision)) {
 			throw new InvalidDeferralStateException("A deferral can only be approved or rejected.");
 		}
@@ -154,6 +154,16 @@ public class DeferralServiceImpl implements DeferralService {
 		if (deferral == null) {
 			throw new InvalidDeferralStateException("Deferral does not exist.");
 		}
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		boolean administrator = hasAuthority(authentication, "ROLE_ADMIN");
+		if (authentication == null || !authentication.isAuthenticated()
+				|| !lecturerId.equals(authentication.getName())) {
+			throw new InvalidDeferralStateException("The authenticated account does not match the decision maker.");
+		}
+		if (!administrator && (!hasAuthority(authentication, "ROLE_LECTURER")
+				|| !lecturerId.equals(deferral.getLectId()))) {
+			throw new InvalidDeferralStateException("Lecturer is not authorised to decide this deferral.");
+		}
 		if (!"False".equalsIgnoreCase(deferral.getApproval())) {
 			throw new InvalidDeferralStateException("Deferral is no longer pending.");
 		}
@@ -163,6 +173,18 @@ public class DeferralServiceImpl implements DeferralService {
 		if (updated != 1) {
 			throw new InvalidDeferralStateException("Deferral changed before the decision could be recorded.");
 		}
+	}
+
+	private boolean hasAuthority(Authentication authentication, String authority) {
+		if (authentication == null || authentication.getAuthorities() == null) {
+			return false;
+		}
+		for (GrantedAuthority granted : authentication.getAuthorities()) {
+			if (authority.equals(granted.getAuthority())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	@Override

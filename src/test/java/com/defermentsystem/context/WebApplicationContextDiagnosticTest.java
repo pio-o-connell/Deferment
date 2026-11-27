@@ -51,7 +51,7 @@ public class WebApplicationContextDiagnosticTest {
 	private static final String[] CONTROLLER_BEANS = {
 			"deferralController", "homeController", "lecturerController",
 			"loginController", "moduleController", "programmeController",
-			"studentController" };
+			"roleDashboardController", "studentController" };
 
 	private static final String[] SERVICE_BEANS = {
 			"deferralServiceImpl", "lecturerServiceImpl", "moduleServiceImpl",

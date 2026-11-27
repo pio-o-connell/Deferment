@@ -126,7 +126,7 @@ public class ModuleController {
 	
 	
 	
-	@RequestMapping(value= "/delete/id/{moduleId}/crn/{crnNumber}", method = RequestMethod.GET)
+	@RequestMapping(value= "/delete/id/{moduleId}/crn/{crnNumber}", method = RequestMethod.POST)
 	public String deleteModuleByIdByCRN(@PathVariable String moduleId ,@PathVariable int crnNumber, ModelMap model)
 	{
 		moduleService.deleteModule(moduleId, crnNumber);

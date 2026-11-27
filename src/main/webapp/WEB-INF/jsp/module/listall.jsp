@@ -31,8 +31,9 @@
       <td><h3>${module.semesterId}</h3></td>   
     
               
-      <td><a href="<%= request.getContextPath() %>/admin/module/delete/id/${module.moduleId}/crn/${module.crnNumber}"
-						class="ui-btn ui-corner-all">Delete</a></td> 
+      <td><form:form method="post" action="${pageContext.request.contextPath}/admin/module/delete/id/${module.moduleId}/crn/${module.crnNumber}">
+			<button type="submit">Delete</button>
+		</form:form></td>
 	  <td><a href="<%= request.getContextPath() %>/admin/module/modify/id/${module.moduleId}/crn/${module.crnNumber}"
 						class="ui-btn ui-corner-all">Modify</a></td> 
 		

@@ -9,8 +9,6 @@ import com.defermentsystem.domain.Deferral;
 import com.defermentsystem.repository.DeferralDAO;
 
 public interface DeferralService {
-	String DECISION_LECTURER_ID = "L001";
-	
 	/**
 	 * This is the method to be used to connect up with the DeferralDAO
 	 */
@@ -105,7 +103,7 @@ public interface DeferralService {
 			String studentID);
 
 	/**
-	 * Approve or reject a pending deferral as lecturer L001.
+	 * Approve or reject a pending deferral as its assigned lecturer or an administrator.
 	 */
 	public void decideDeferral(int id, String lecturerId, String decision);
 

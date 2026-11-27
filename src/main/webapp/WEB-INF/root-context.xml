@@ -42,19 +42,16 @@
 	<!-- Java Mail API -->
 	
 	<bean id="mailSender" class="org.springframework.mail.javamail.JavaMailSenderImpl">
-		<property name="host" value="smtp.live.com"/>
-		<property name="port" value="25"/>
-		<property name="username" value="citdeferralsystem64@hotmail.com"/>
-		<property name="password" value="Honeyspider64"/>
+		<property name="host" value="${SMTP_HOST:${smtp.host:}}"/>
+		<property name="port" value="${SMTP_PORT:${smtp.port:25}}"/>
+		<property name="username" value="${SMTP_USERNAME:${smtp.username:}}"/>
+		<property name="password" value="${SMTP_PASSWORD:${smtp.password:}}"/>
+		<property name="defaultEncoding" value="UTF-8"/>
 		<property name="javaMailProperties">
 			<props>
-				
-				<!-- Use SMTP transport protocol -->
 				<prop key="mail.transport.protocol">smtp</prop>
-				<!-- Use SMTP-AUTH to authenticate to SMTP server -->
-				<prop key="mail.smtp.auth">true</prop>
-				<!-- Use TLS to encrypt communication with SMTP server -->
-				<prop key="mail.smtp.starttls.enable">true</prop>
+				<prop key="mail.smtp.auth">${SMTP_AUTH:${smtp.auth:false}}</prop>
+				<prop key="mail.smtp.starttls.enable">${SMTP_STARTTLS_ENABLE:${smtp.starttls.enable:false}}</prop>
 				<prop key="mail.debug">false</prop>
 			</props>
 		</property>

@@ -81,7 +81,11 @@ public class StaticConfigurationTest {
         }
         if (security != null) {
             scan(security, SECURITY, Collections.<String>emptySet());
-            beans(security, SECURITY, Collections.<String, String>emptyMap());
+            beans(security, SECURITY, map(
+                    "roleBasedAuthenticationSuccessHandler", "com.defermentsystem.security.RoleBasedAuthenticationSuccessHandler",
+                    "bcryptPasswordEncoder", "org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder",
+                    "jdbcUserDetailsService", "org.springframework.security.core.userdetails.jdbc.JdbcDaoImpl",
+                    "migratingAuthenticationProvider", "com.defermentsystem.security.MigratingDaoAuthenticationProvider"));
         }
         if (repository != null) {
             scan(repository, REPOSITORY, set("com.defermentsystem.repository"));

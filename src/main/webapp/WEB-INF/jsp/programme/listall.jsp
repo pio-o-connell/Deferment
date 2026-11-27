@@ -30,9 +30,9 @@
 						href="<%= request.getContextPath() %>/admin/lecturer/display/id/${programme.coordinatorId}"
 						class="ui-btn ui-corner-all">${programme.coordinatorId}</a></td>
 					<td><h3>${programme.progYear}</h3></td>
-					<td><a
-						href="<%= request.getContextPath() %>/admin/programme/delete/${status.current.programmeId}"
-						class="ui-btn ui-corner-all">Delete</a></td>
+					<td><form:form method="post" action="${pageContext.request.contextPath}/admin/programme/delete/${status.current.programmeId}">
+						<button type="submit">Delete</button>
+					</form:form></td>
 					<td><a
 						href="<%= request.getContextPath() %>/admin/programme/modifyProgBtn/${status.current.programmeId}"
 						class="ui-btn ui-corner-all">Modify</a></td>

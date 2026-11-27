@@ -26,6 +26,8 @@ import javax.sql.DataSource;
 
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.springframework.aop.framework.Advised;
@@ -38,6 +40,9 @@ import org.springframework.test.context.TestExecutionListeners;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.test.context.support.DependencyInjectionTestExecutionListener;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.authority.AuthorityUtils;
 
 import com.defermentsystem.exceptions.InvalidDeferralStateException;
 import com.defermentsystem.service.DeferralServiceImpl;
@@ -59,6 +64,16 @@ public class DeferralTransactionTest {
 
 	@Autowired
 	private DataSource dataSource;
+
+	@Before
+	public void authenticateAssignedLecturer() {
+		setAuthentication("L001", "ROLE_LECTURER");
+	}
+
+	@After
+	public void clearAuthentication() {
+		SecurityContextHolder.clearContext();
+	}
 
 	@Test
 	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
@@ -233,22 +248,24 @@ public class DeferralTransactionTest {
 
 	@Test
 	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
-	public void onlyL001CanRejectAndOptionalReasonIsStored() {
+	public void assignedLecturerCanRejectAndOptionalReasonIsStored() {
 		DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl", DeferralServiceImpl.class);
 		DeferralDAO dao = applicationContext.getBean("deferralJdbcDaoSupport", DeferralDAO.class);
 		int id = dao.createDeferralGetId("R0020934", "L002", "KCLDC_Y4", "COMP8038");
 		try {
-			service.decideDeferral(id, "L002", "Rejected", "reason");
+			service.decideDeferral(id, "L001", "Rejected", "reason");
 			fail("Expected unauthorised decision rejection");
 		} catch (InvalidDeferralStateException expected) {
 			assertEquals("False", dao.getDeferral(id).getApproval());
 		}
-		service.decideDeferral(id, "L001", "Rejected", "  Further evidence needed  ");
+		setAuthentication("L002", "ROLE_LECTURER");
+		service.decideDeferral(id, "L002", "Rejected", "  Further evidence needed  ");
 		assertEquals("Rejected", dao.getDeferral(id).getApproval());
-		assertEquals("L001", dao.getDeferral(id).getDecisionLecturerId());
+		assertEquals("L002", dao.getDeferral(id).getDecisionLecturerId());
 		assertEquals("Further evidence needed", dao.getDeferral(id).getRejectionReason());
 
 		int secondId = dao.createDeferralGetId("R0004444", "L001", "KCMSD_Y5", "COMP8040");
+		setAuthentication("L001", "ROLE_LECTURER");
 		service.decideDeferral(secondId, "L001", "Rejected", "");
 		assertEquals(null, dao.getDeferral(secondId).getRejectionReason());
 		assertTrue(dao.getDeferral(secondId).getApproval().equals("Rejected"));
@@ -282,14 +299,23 @@ public class DeferralTransactionTest {
 		return new Callable<Boolean>() {
 			public Boolean call() throws Exception {
 				start.await();
+				setAuthentication("L001", "ROLE_LECTURER");
 				try {
 					service.decideDeferral(id, "L001", decision);
 					return true;
 				} catch (InvalidDeferralStateException | DataAccessException expected) {
 					return false;
+				} finally {
+					SecurityContextHolder.clearContext();
 				}
 			}
 		};
+	}
+
+	private void setAuthentication(String username, String role) {
+		SecurityContextHolder.getContext().setAuthentication(
+				new UsernamePasswordAuthenticationToken(username, "unused",
+						AuthorityUtils.createAuthorityList(role)));
 	}
 
 	private DeferralDAO failingDao(final DeferralDAO delegate, final int failOnCall) {

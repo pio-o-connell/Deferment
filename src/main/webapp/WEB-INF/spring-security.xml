@@ -9,49 +9,72 @@
 
 
 	<security:http pattern="/admin/deferral/modify/**" auto-config="true" use-expressions="true">
-		<security:intercept-url pattern="/admin/deferral/modify/**" access="isAuthenticated()" />
-		<security:form-login login-page="/login" />
+		<security:intercept-url pattern="/admin/deferral/modify/**"
+			access="hasAnyRole('ROLE_LECTURER','ROLE_ADMIN')" />
+		<security:form-login login-page="/login"
+			authentication-success-handler-ref="roleBasedAuthenticationSuccessHandler"
+			authentication-failure-url="/login?error" />
 		<security:csrf />
+		<security:session-management session-fixation-protection="migrateSession" />
 	</security:http>
 
 	<security:http auto-config="true" use-expressions="true">
-
-		<!-- comment out this line below to turn security off -->
-		 <!-- <security:intercept-url pattern="/admin/**" access="hasRole('ROLE_ADMIN')" 
-			/> -->
-
-
 		<security:intercept-url pattern="/login"
 			access="permitAll" />
+		<security:intercept-url pattern="/" access="permitAll" />
+		<security:intercept-url pattern="/home" access="permitAll" />
+
+		<security:intercept-url pattern="/resources/**" access="permitAll" />
+		<security:intercept-url pattern="/home/downloadForm" access="permitAll" />
+		<security:intercept-url pattern="/admin/deferral/addModuleDeferralPage1"
+			access="hasRole('ROLE_USER')" />
+		<security:intercept-url pattern="/admin/deferral/addModuleDeferralPage2"
+			access="hasRole('ROLE_USER')" />
+		<security:intercept-url pattern="/admin/deferral/addProgrammeDeferralPage1"
+			access="hasRole('ROLE_USER')" />
+		<security:intercept-url pattern="/admin/deferral/addProgrammeDeferralPage2"
+			access="hasRole('ROLE_USER')" />
+		<security:intercept-url pattern="/admin/deferral/downloadForm/**"
+			access="hasAnyRole('ROLE_USER','ROLE_LECTURER','ROLE_ADMIN')" />
+		<security:intercept-url pattern="/admin/deferral/**"
+			access="hasRole('ROLE_ADMIN')" />
+		<security:intercept-url pattern="/admin/**" access="hasRole('ROLE_ADMIN')" />
+		<security:intercept-url pattern="/student/**" access="hasRole('ROLE_USER')" />
+		<security:intercept-url pattern="/lecturer/**"
+			access="hasAnyRole('ROLE_LECTURER','ROLE_ADMIN')" />
+		<security:intercept-url pattern="/**" access="permitAll" />
 
 		<security:form-login login-page="/login"
-			default-target-url="/home" always-use-default-target="true"
+			authentication-success-handler-ref="roleBasedAuthenticationSuccessHandler"
 			authentication-failure-url="/login?error" />
 
 		<security:logout logout-success-url="/login?logout" />
-
+		<security:csrf />
+		<security:session-management session-fixation-protection="migrateSession" />
 	</security:http>
 
-
-
+	<beans:bean id="roleBasedAuthenticationSuccessHandler"
+		class="com.defermentsystem.security.RoleBasedAuthenticationSuccessHandler" />
+	<beans:bean id="bcryptPasswordEncoder"
+		class="org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder" />
+	<beans:bean id="jdbcUserDetailsService"
+		class="org.springframework.security.core.userdetails.jdbc.JdbcDaoImpl">
+		<beans:property name="dataSource" ref="dataSource"/>
+		<beans:property name="usersByUsernameQuery"
+			value="select username,password,enabled from users where username=?"/>
+		<beans:property name="authoritiesByUsernameQuery"
+			value="select u.username, ur.authority from users u join user_roles ur on u.user_id=ur.user_id where u.username=?"/>
+	</beans:bean>
+	<beans:bean id="migratingAuthenticationProvider"
+		class="com.defermentsystem.security.MigratingDaoAuthenticationProvider">
+		<beans:property name="userDetailsService" ref="jdbcUserDetailsService"/>
+		<beans:property name="passwordEncoder" ref="bcryptPasswordEncoder"/>
+		<beans:property name="bcryptPasswordEncoder" ref="bcryptPasswordEncoder"/>
+		<beans:property name="dataSource" ref="dataSource"/>
+	</beans:bean>
 
 	<security:authentication-manager>
-
-		<security:authentication-provider>
-
-			<security:jdbc-user-service
-				data-source-ref="dataSource"
-				users-by-username-query="
-		select username,password, enabled 
-		from users where username=?"
-
-				authorities-by-username-query="
-		select u.username, ur.authority from users u, user_roles ur 
-		where u.user_id = ur.user_id and u.username =? " />
-
-
-		</security:authentication-provider>
-
+		<security:authentication-provider ref="migratingAuthenticationProvider"/>
 	</security:authentication-manager>
 
 

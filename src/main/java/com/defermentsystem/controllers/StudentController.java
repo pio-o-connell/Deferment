@@ -102,7 +102,7 @@ public class StudentController {
 		}
 		
 		
-		@RequestMapping(value= "/delete/id/{id}", method = RequestMethod.GET)
+		@RequestMapping(value= "/delete/id/{id}", method = RequestMethod.POST)
 		public String deleteStudentById(@PathVariable String id, ModelMap model){
 			Student student = studentService.getStudent(id);
 			studentService.deleteStudent(id);
