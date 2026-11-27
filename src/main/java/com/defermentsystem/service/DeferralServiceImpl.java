@@ -192,6 +192,7 @@ public class DeferralServiceImpl implements DeferralService {
 	public int submitModuleDeferral(String studentId, String moduleId, int crnNumber,
 			byte[] document, Path uploadDirectory) throws IOException {
 		validateSubmissionDocument(document, uploadDirectory);
+		rejectDuplicatePendingSubmission(studentId, moduleId, null);
 		int id = deferralDAO.createModuleDeferralGetId(studentId, moduleId, crnNumber);
 		ArrayList<Integer> ids = new ArrayList<Integer>();
 		ids.add(id);
@@ -204,12 +205,27 @@ public class DeferralServiceImpl implements DeferralService {
 	public ArrayList<Integer> submitProgrammeDeferral(String studentId, String programmeId,
 			byte[] document, Path uploadDirectory) throws IOException {
 		validateSubmissionDocument(document, uploadDirectory);
+		rejectDuplicatePendingSubmission(studentId, null, programmeId);
 		ArrayList<Integer> ids = deferralDAO.createProgrammeDeferralGetId(studentId, programmeId);
 		if (ids.isEmpty()) {
 			throw new IllegalArgumentException("No modules are registered for this student and programme.");
 		}
 		writeDocuments(ids, document, uploadDirectory);
 		return ids;
+	}
+
+	private void rejectDuplicatePendingSubmission(String studentId, String moduleId, String programmeId) {
+		for (Deferral existing : deferralDAO.listDeferralsByStudent(studentId)) {
+			if (!"False".equalsIgnoreCase(existing.getApproval())) {
+				continue;
+			}
+			if (moduleId != null && moduleId.equals(existing.getModuleId())) {
+				throw new IllegalArgumentException("A pending module deferral already exists.");
+			}
+			if (programmeId != null && programmeId.equals(existing.getProgrammeId())) {
+				throw new IllegalArgumentException("A pending programme deferral already exists.");
+			}
+		}
 	}
 
 	private void validateSubmissionDocument(byte[] document, Path uploadDirectory) {

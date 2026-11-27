@@ -128,7 +128,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listDeferrals() {
 		String SQL = "select * from deferrals";
 		List<Deferral> deferralList = getJdbcTemplate().query(SQL,new DeferralMapper());
@@ -137,7 +137,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listDeferralsByStudent(String studentID) {
 		String SQL = "select * from deferrals where Student_ID = ?";
 		List<Deferral> deferralsList = getJdbcTemplate().query(SQL,  new Object[]{studentID}, new DeferralMapper());
@@ -197,7 +197,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public int countRows() {
 		String SQL = "select count(*) from deferrals";
 		int rows = getJdbcTemplate().queryForObject(SQL, Integer.class);
@@ -226,7 +226,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void deleteDeferralById(int id) {
 		String SQL = "delete from deferrals where Def_ID = ?";
 		getJdbcTemplate().update(SQL, new Object[]{id});
@@ -236,7 +236,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void deleteDeferralsByStudentID(String studentId){
 		String SQL = "delete from deferrals where Student_ID = ?";
 		getJdbcTemplate().update(SQL, new Object[]{studentId});
@@ -244,7 +244,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void deleteDeferralsByModuleID(String moduleId){
 		String SQL = "delete from deferrals where Module_ID = ?";
 		getJdbcTemplate().update(SQL, new Object[]{moduleId});
@@ -262,7 +262,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listDeferralsByProgramme(String programmeID) {
 		String SQL = "select * from deferrals where Programme_ID = ?";
 		List<Deferral> deferralsList = getJdbcTemplate().query(SQL,  new Object[]{programmeID}, new DeferralMapper());
@@ -270,7 +270,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listDeferralsByModule(String moduleID) {
 		String SQL = "select * from deferrals where Module_ID = ?";
 		List<Deferral> deferralsList = getJdbcTemplate().query(SQL,  new Object[]{moduleID}, new DeferralMapper());
@@ -278,7 +278,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listUnapprovedDeferrals(String unapproved) {
 		String SQL = "select * from deferrals where Approved = ?";
 		List<Deferral> deferralsList = getJdbcTemplate().query(SQL,  new Object[]{unapproved}, new DeferralMapper());
@@ -286,7 +286,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listUnapprovedDeferralsByProgramme(String unapproved, String programmeID) {
 		String SQL = "select * from deferrals where Approved = ? and Programme_ID = ?";
 		List<Deferral> deferralsList = getJdbcTemplate().query(SQL,  new Object[]{unapproved, programmeID}, new DeferralMapper());
@@ -294,7 +294,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listUnapprovedDeferralsByProgrammeCoordinatorName(
 			String unapproved, String firstname) {
 		String SQL = "select * from deferrals "
@@ -306,7 +306,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listApprovedDeferralsByStudent(String approved, String studentID){
 		String SQL = "select * from deferrals where Approved = ? and Student_ID = ?";
 		List<Deferral> deferralsList = getJdbcTemplate().query(SQL,  new Object[]{approved, studentID}, new DeferralMapper());
@@ -314,7 +314,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void updateDeferral(int id, String approval) {
 		String SQL = "update deferrals set Approved= ? where Def_ID = ?";
 		getJdbcTemplate().update(SQL,  new Object[] {approval, id});
@@ -424,7 +424,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listDeferralsByCoordinatorId(String coordinatorId) {
 		String SQL = "select * from deferrals where Lect_ID = ?";
 		List<Deferral> deferralsList = getJdbcTemplate().query(SQL,  new Object[]{coordinatorId}, new DeferralMapper());
@@ -433,7 +433,7 @@ public class DeferralJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Deferral> listUnapprovedDeferralsByCoordinatorId(String coordinatorId) {
 		String SQL = "select * from deferrals where Approved = 'False'and Lect_ID = ?";
 		List<Deferral> deferralsList = getJdbcTemplate().query(SQL,  new Object[]{coordinatorId}, new DeferralMapper());

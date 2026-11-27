@@ -28,7 +28,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 	
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createModule(String moduleId, int crnNumber, String name, String lectId, String semesterId) {
 		String SQL = "insert into modules (Module_ID, CRN, Name, Lect_ID, Semester_ID) values (?, ?, ?,?,?)";
 		getJdbcTemplate().update(SQL,new Object[] { moduleId, crnNumber, name, lectId, semesterId  });
@@ -37,7 +37,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 	
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void deleteModule(String moduleId,int crnNumber) {
 		String SQL = "delete from modules where Module_ID = ? and CRN= ?";
 		getJdbcTemplate().update(SQL, new Object[] { moduleId, crnNumber });
@@ -45,7 +45,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createMultipleModules(final List<Module> modules) {
 		String SQL = "insert into modules (Module_ID, CRN, Name, Lect_ID, Semester_ID) values (?, ?, ?,?,?)";
 		getJdbcTemplate().batchUpdate(SQL, new BatchPreparedStatementSetter() {
@@ -71,7 +71,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public Module getModule(String moduleId, int crnNumber) {
 		String SQL = "select * from modules where Module_ID = ? and CRN= ?";
 		Module module= (Module) getJdbcTemplate().queryForObject(SQL, 
@@ -81,7 +81,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public Module getModuleByName(String name, int crnNumber) {
 		String SQL = "select * from modules where Name = ? and CRN= ?";
 		Module module= (Module) getJdbcTemplate().queryForObject(SQL, 
@@ -91,7 +91,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Module> listStudentModules(String studId) {
 		List<Module> modules;
 		String SQL="SELECT * from modules"
@@ -104,7 +104,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Module> listModules() {
 		String SQL = "select * from modules";
 		List<Module> moduleList = getJdbcTemplate().query(SQL, 
@@ -114,7 +114,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void registerStudentForModule(String studId,int crnNumber) {
 		
 		/*The module must correspond to a specific programme ID
@@ -140,7 +140,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public int countRows() {
 		String SQL = "select count(*) from modules";
 		int rows=getJdbcTemplate().queryForObject(SQL, Integer.class);
@@ -149,7 +149,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void updateModuleName(String id, int crn, String name) {
 		String SQL = "update modules set Name =? where Module_ID = ? and CRN = ?";
 		getJdbcTemplate().update(SQL, new Object[] {name, id, crn});
@@ -176,7 +176,7 @@ public class ModuleJdbcDaoSupport extends JdbcDaoSupport implements ModuleDAO {
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Module> listModulesByStudentId(String studId){
 		String SQL = "select distinct Module_ID from modules where CRN in "
 				+ "(select CRN from registration where Student_ID = ?)";

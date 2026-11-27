@@ -4,11 +4,13 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.defermentsystem.domain.Student;
 import com.defermentsystem.repository.StudentDAO;
 
 @Service
+@Transactional(readOnly = true)
 public class StudentServiceImpl implements StudentService {
 	
 	@Autowired
@@ -19,6 +21,7 @@ public class StudentServiceImpl implements StudentService {
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void createStudent(String studId, String firstName, String lastName,
 			String email) {
 		studentDAO.createStudent(studId, firstName, lastName, email);
@@ -26,6 +29,7 @@ public class StudentServiceImpl implements StudentService {
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void updateStudent(String id, String firstname, String lastname,
 			String email) {
 		studentDAO.updateStudent(id, firstname, lastname, email);
@@ -33,30 +37,35 @@ public class StudentServiceImpl implements StudentService {
 	}
 	
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void updateStudentEmail(String id, String email) {
 		studentDAO.updateStudentEmail(id, email);
 		
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void updateStudent(String id, String lastname) {
 		studentDAO.updateStudent(id, lastname);
 
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void deleteStudent(String studId) {
 		studentDAO.deleteStudent(studId);
 
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void createMultipleStudents(List<Student> students) {
 		studentDAO.createMultipleStudents(students);
 
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void deleteMultipleStudents(List<Student> students) {
 		studentDAO.deleteMultipleStudents(students);
 

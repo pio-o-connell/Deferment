@@ -25,7 +25,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	} 
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createStudent(String studId, String firstName,String lastName, String email) {
 		String SQL = "insert into student (Student_ID, Firstname, Surname, Student_Email) values (?, ?, ?,?)";
 		getJdbcTemplate().update(SQL,new Object[] { studId, firstName, lastName, email });
@@ -34,7 +34,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void deleteStudent(String studId) {
 		String SQL = "delete from student where Student_ID = ?";
 		getJdbcTemplate().update(SQL, new Object[] { studId });
@@ -42,7 +42,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createMultipleStudents(final List<Student> students) {
 		String SQL = "insert into student (Student_ID, Firstname, Surname, Student_Email) values (?, ?, ?, ?)";
 		getJdbcTemplate().batchUpdate(SQL, new BatchPreparedStatementSetter() {
@@ -67,7 +67,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public Student getStudent(String id) {
 		String SQL = "select * from student where Student_ID = ?";
 		Student student= (Student) getJdbcTemplate().queryForObject(SQL, 
@@ -77,7 +77,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Student> listStudents() {
 		String SQL = "select * from student";
 		List<Student> studentList = getJdbcTemplate().query(SQL, 
@@ -86,7 +86,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public int countRows() {
 		String SQL = "select count(*) from student";
 		int rows=getJdbcTemplate().queryForObject(SQL, Integer.class);
@@ -94,7 +94,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void updateStudent(String id, String firstname, String lastname,
 			String email) {
 		String SQL = "update Student set Firstname =?, Surname = ?, Student_Email=? where Student_ID = ?";
@@ -104,7 +104,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void updateStudent(String id, String lastname){
 		String SQL = "update Student set Surname = ? where Student_ID = ?";
 		getJdbcTemplate().update(SQL, new Object [] {lastname, id});
@@ -113,7 +113,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void updateStudentEmail(String id, String email) {
 		String SQL = "update Student set Student_Email=? where Student_ID = ?";
 		getJdbcTemplate().update(SQL, new Object [] {email, id});
@@ -122,7 +122,7 @@ public class StudentJdbcDaoSupport extends JdbcDaoSupport implements StudentDAO 
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void deleteMultipleStudents(final List<Student> students) {
 		String SQL = "delete from student where Student_ID = ?";
 		getJdbcTemplate().batchUpdate(SQL, new BatchPreparedStatementSetter() {

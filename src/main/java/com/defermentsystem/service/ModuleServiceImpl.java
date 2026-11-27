@@ -4,11 +4,13 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.defermentsystem.domain.Module;
 import com.defermentsystem.repository.ModuleDAO;
 
 @Service
+@Transactional(readOnly = true)
 public class ModuleServiceImpl implements ModuleService {
 
 	@Autowired
@@ -20,23 +22,27 @@ public class ModuleServiceImpl implements ModuleService {
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void createModule(String moduleId, int crnNumber, String name,
 			String lectId, String semesterId) {
 		moduleDAO.createModule(moduleId, crnNumber, name, lectId, semesterId);
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void updateModuleName(String id, int crn, String name) {
 		moduleDAO.updateModuleName(id, crn, name);
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void deleteModule(String moduleId, int crnNumber) {
 		moduleDAO.deleteModule(moduleId, crnNumber);
 
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void createMultipleModules(List<Module> modules) {
 		moduleDAO.createMultipleModules(modules);
 
@@ -68,6 +74,7 @@ public class ModuleServiceImpl implements ModuleService {
 	}
 
 	@Override
+	@Transactional(rollbackFor = Exception.class)
 	public void registerStudentForModule(String studId, int crnNumber) {
 		moduleDAO.registerStudentForModule(studId, crnNumber);
 

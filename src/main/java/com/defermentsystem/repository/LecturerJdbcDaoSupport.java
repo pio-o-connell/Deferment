@@ -29,7 +29,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	} 
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createLecturer(String lectId, String firstName,String lastName, String email) {
 		String SQL = "insert into lecturer (Lect_ID, Firstname, Surname, Lecturer_Email) values (?, ?, ?, ?)";
 
@@ -40,7 +40,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void deleteLecturer(String lectId) {
 		String SQL = "delete from lecturer where Lect_ID = ?";
 		getJdbcTemplate().update(SQL, new Object[] { lectId });
@@ -48,7 +48,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createMultipleLecturers(final List<Lecturer> lecturers) {
 		String SQL = "insert into lecturer (Lect_ID, Firstname, Surname, Lecturer_Email) values (?, ?, ?, ?)";
 		getJdbcTemplate().batchUpdate(SQL, new BatchPreparedStatementSetter() {
@@ -73,7 +73,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public Lecturer getLecturer(String id) {
 		String SQL = "select * from lecturer where Lect_ID = ?";
 		Lecturer lecturer= (Lecturer) getJdbcTemplate().queryForObject(SQL, 
@@ -83,7 +83,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Lecturer> listLecturers() {
 		String SQL = "select * from lecturer";
 		List<Lecturer> lecturerList = getJdbcTemplate().query(SQL, 
@@ -92,7 +92,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public int countRows() {
 		String SQL = "select count(*) from lecturer";
 		int rows=getJdbcTemplate().queryForObject(SQL, Integer.class);
@@ -100,7 +100,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void updateLecturer(String id, String firstname, String lastname,
 			String email) {
 		String SQL = "update Lecturer set Firstname =?, Surname = ?, Lecturer_Email=? where Lect_ID = ?";
@@ -110,7 +110,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void updateLecturer(String id, String lastname){
 		String SQL = "update Lecturer set Surname = ? where Lect_ID = ?";
 		getJdbcTemplate().update(SQL, new Object [] {lastname, id});
@@ -119,7 +119,7 @@ public class LecturerJdbcDaoSupport extends JdbcDaoSupport implements LecturerDA
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void deleteMultipleLecturers(final List<Lecturer> lecturers) {
 		String SQL = "delete from lecturer where Lect_ID = ?";
 		getJdbcTemplate().batchUpdate(SQL, new BatchPreparedStatementSetter() {

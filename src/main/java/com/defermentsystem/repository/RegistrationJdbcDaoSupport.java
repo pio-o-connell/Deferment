@@ -25,7 +25,7 @@ public class RegistrationJdbcDaoSupport extends JdbcDaoSupport implements
 
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Registration> listRegistrations() {
 		String SQL = "select * from registration";
 		List<Registration> registrationList = getJdbcTemplate().query(SQL,new RegistrationMapper());
@@ -33,7 +33,7 @@ public class RegistrationJdbcDaoSupport extends JdbcDaoSupport implements
 	}
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public int countRows() {
 		String SQL = "select count(*) from registration";
 		int rows = getJdbcTemplate().queryForObject(SQL, Integer.class);

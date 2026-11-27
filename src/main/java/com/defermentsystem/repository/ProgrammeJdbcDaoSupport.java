@@ -22,7 +22,7 @@ public class ProgrammeJdbcDaoSupport extends JdbcDaoSupport implements Programme
 	} 
 
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public void createProgramme(String programmeId, int numYears,String coordinatorId,String startMonth) {
 		
 		for (int x=0;x<numYears; x++){
@@ -58,7 +58,7 @@ public class ProgrammeJdbcDaoSupport extends JdbcDaoSupport implements Programme
 	
 		
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public  List<Programme> deleteProgramme(String programmeId) {
 		String SQL = "delete from programme where Programme_ID like ?";
 		String allProgrammeYears=programmeId +"%";
@@ -69,7 +69,7 @@ public class ProgrammeJdbcDaoSupport extends JdbcDaoSupport implements Programme
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public String getStudentProgrammeId(String studId) {
 		String SQL = "select DISTINCT Programme_ID from programme"
 			+ " WHERE Programme_ID in (SELECT Programme_ID FROM registration WHERE Student_ID = ?)";
@@ -79,7 +79,7 @@ public class ProgrammeJdbcDaoSupport extends JdbcDaoSupport implements Programme
 	
 	@SuppressWarnings("unchecked")
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public List<Programme> listProgrammes() {
 		String SQL = "select * from programme";
 		List<Programme> programmeList = getJdbcTemplate().query(SQL, 
@@ -88,7 +88,7 @@ public class ProgrammeJdbcDaoSupport extends JdbcDaoSupport implements Programme
 	}
 	
 	@Override
-	@Transactional(readOnly = false, propagation = Propagation.REQUIRES_NEW)
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
 	public int countRows() {
 		String SQL = "select count(*) from programme";
 		int rows=getJdbcTemplate().queryForObject(SQL, Integer.class);

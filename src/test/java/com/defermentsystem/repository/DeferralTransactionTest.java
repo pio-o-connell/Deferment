@@ -273,6 +273,41 @@ public class DeferralTransactionTest {
 
 	@Test
 	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
+	public void nonexistentDeferralDecisionMakesNoChange() {
+		DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl",
+				DeferralServiceImpl.class);
+
+		try {
+			service.decideDeferral(999999, "L001", "True");
+			fail("Expected missing deferral rejection");
+		} catch (InvalidDeferralStateException expected) {
+			assertTrue(expected.getMessage().contains("does not exist"));
+		}
+	}
+
+	@Test
+	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
+	public void duplicatePendingSubmissionIsRejected() throws IOException {
+		DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl",
+				DeferralServiceImpl.class);
+		Path directory = temporaryFolder.newFolder().toPath();
+		byte[] document = "test document".getBytes(StandardCharsets.UTF_8);
+
+		service.submitModuleDeferral("R0004444", "COMP8040", 24248, document, directory);
+		try {
+			service.submitModuleDeferral("R0004444", "COMP8040", 24248, document, directory);
+			fail("Expected duplicate pending submission rejection");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("pending module deferral"));
+		}
+
+		assertEquals(Integer.valueOf(1), new JdbcTemplate(dataSource).queryForObject(
+				"select count(*) from deferrals where Student_ID=? and Module_ID=?",
+				Integer.class, "R0004444", "COMP8040"));
+	}
+
+	@Test
+	@DatabaseSetup(value = "classpath:databaseEntries.xml", type = DatabaseOperation.CLEAN_INSERT)
 	public void concurrentDecisionsCannotBothSucceed() throws Exception {
 		final DeferralServiceImpl service = applicationContext.getBean("deferralServiceImpl", DeferralServiceImpl.class);
 		DeferralDAO dao = applicationContext.getBean("deferralJdbcDaoSupport", DeferralDAO.class);

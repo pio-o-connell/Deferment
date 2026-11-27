@@ -6,11 +6,14 @@ The application also manages supporting data for students, lecturers, programmes
 
 This document describes the **current local implementation**. It distinguishes implemented behaviour from tested behaviour, outstanding work, and explicitly excluded functionality. See [Business Workflows](#7-business-workflows), [Transaction Test Matrix](#11-transaction-test-matrix), and [Security](#19-security) for important limitations.
 
+All repository changes described here are local. No commit, push, or deployment is implied by this implementation.
+
 ## Contents
 
 - [Deferment System](#deferment-system)
   - [Contents](#contents)
   - [1. Project Overview](#1-project-overview)
+  - [Quality Enhancement Programme](#quality-enhancement-programme)
   - [2. Features](#2-features)
     - [Implemented](#implemented)
     - [Outstanding or limited](#outstanding-or-limited)
@@ -88,6 +91,21 @@ The project remains a conventional Java 8 Spring MVC 4, Spring JDBC, JSP, JSTL, 
 
 ---
 
+## Quality Enhancement Programme
+
+The local implementation is structured around the four objectives in the [Application Quality, Security, Transaction Integrity and Testing Enhancement Specification](<implementations/Deferment – Application Quality, Security, Transaction Integrity and Testing Enhancement Specification.md>). It retains the existing Java/Spring MVC architecture and improves selected areas incrementally.
+
+| Objective | Current local status |
+|---|---|
+| Security | JDBC authentication, BCrypt migration, role-aware dashboards, URL authorisation, CSRF protection, student ownership checks, and assigned-lecturer decision enforcement are implemented. Broad CRUD and all-role browser coverage remains incomplete. |
+| Transactions | Selected deferral submission and decision workflows use Spring transaction boundaries and conditional updates. HSQLDB commit, rollback, file-cleanup and concurrent-decision tests provide selected evidence; MySQL concurrency and every administrator CRUD workflow are not fully verified. |
+| Notifications | JavaMail configuration is externalised and notification failure is kept separate from a committed deferral. Unit tests use a recording sender. Live SMTP delivery and durable retries are not implemented or verified. |
+| Testing | Maven unit, DAO, transaction, security, mail, context-diagnostic, and Selenium test infrastructure is present. Test scope and environment limits are recorded in the [Transaction Test Matrix](#11-transaction-test-matrix) and [Testing](#18-testing) sections. |
+
+The specification is a design and verification target, not evidence that every proposed scenario has passed. Features that are not implemented or not proven are identified explicitly throughout this document.
+
+---
+
 <a id="features"></a>
 
 ## 2. Features
@@ -121,12 +139,12 @@ The project remains a conventional Java 8 Spring MVC 4, Spring JDBC, JSP, JSTL, 
 
 - Crash-safe coordination of PDF files and database commits
 - Durable email retries
+- Live SMTP delivery verification
 - MySQL concurrency verification
 - A separate decision-history schema
 - A document-reference database table
-- Durable notification retries and a transactional outbox
+- A transactional notification outbox
 - A persistent audit history
-- MySQL concurrency verification
 - Comprehensive CRUD and all-role authentication regression coverage
 
 ---
@@ -384,16 +402,16 @@ Repositories participate in the surrounding Spring transaction when they use `Pr
 | `REQUIRED` | Join the existing service transaction, or create a transaction if one does not exist |
 | `REQUIRES_NEW` | Suspend the existing transaction and commit or roll back independently |
 
-Not every `DeferralJdbcDaoSupport` method uses `REQUIRED`.
+The deferral and administrator CRUD repository implementations use `REQUIRED` for participating database operations.
 
 Current relevant usage includes:
 
 - Module and programme submission operations: `REQUIRED`
 - `updateDeferralStatusIfPending(...)`: `REQUIRED`
 - `createDeferralGetId(...)` and `getDeferral(...)`: `REQUIRED`
-- Many list, lookup, delete, and legacy update methods: `REQUIRES_NEW`
+- Deferral list, lookup, delete, and legacy update methods: `REQUIRED`
 
-`REQUIRES_NEW` is independent transaction behaviour. All DAO propagation statements must therefore be reviewed before claiming that every larger service workflow is atomic.
+`REQUIRES_NEW` is independent transaction behaviour. The local implementation has removed independent repository transaction propagation for deferral and administrator CRUD operations so those writes participate in the surrounding service transaction.
 
 ### Transaction lifecycle
 
@@ -411,13 +429,13 @@ flowchart LR
     Controller -. email after service commit .-> SMTP[SMTP email]
 ```
 
-The browser/controller layer receives the request and performs the validation present in each flow. The controller calls the service proxy, which establishes the Spring transaction before invoking the service method. The service coordinates the operation; the DAO and `JdbcTemplate` perform database operations. When the transaction boundary is reached, a successful operation commits and an applicable exception causes rollback. DAO methods using `REQUIRES_NEW` instead run in an independent transaction.
+The browser/controller layer receives the request and performs the validation present in each flow. The controller calls the service proxy, which establishes the Spring transaction before invoking the service method. The service coordinates the operation; the DAO and `JdbcTemplate` perform database operations. When the transaction boundary is reached, a successful operation commits and an applicable exception causes rollback. Repository operations marked `REQUIRED` join this surrounding service transaction.
 
 The controller must not display a success response after a database operation that failed and propagated an exception.
 
 ### Administrator operations: intended transaction policy
 
-This is guidance for identifying business transaction boundaries, not a claim that every existing administrator operation follows it. Some legacy DAO methods use `REQUIRES_NEW`, as noted above.
+This is guidance for identifying business transaction boundaries. Deferral and administrator CRUD repository operations now use `REQUIRED` so they participate in surrounding Spring transactions.
 
 | Operation | Intended policy |
 |---|---|
@@ -511,6 +529,8 @@ An HSQLDB test covers a file collision and rollback cleanup; it cannot prove cra
 | `invalidRegistrationDoesNotCreateSubmission()` | Submits a mismatched module or a programme with no registrations | No deferrals or documents are created | Implemented and tested |
 | `assignedLecturerCanRejectAndOptionalReasonIsStored()` | Attempts an unauthorised pending decision, then rejects with the assigned lecturer | Unauthorised decision is rejected; lecturer and optional reason are stored | Implemented and tested |
 | `concurrentDecisionsCannotBothSucceed()` | Competing approval and rejection on HSQLDB | Exactly one succeeds and its status and lecturer are stored | Implemented and tested on HSQLDB |
+| `nonexistentDeferralDecisionMakesNoChange()` | Attempts to decide a missing deferral ID | A business exception is returned and no database change occurs | Implemented and tested |
+| `duplicatePendingSubmissionIsRejected()` | Submits the same module twice while the first remains pending | The duplicate is rejected and only one deferral remains | Implemented and tested |
 
 ### Outstanding test coverage
 
@@ -518,12 +538,12 @@ An HSQLDB test covers a file collision and rollback cleanup; it cannot prove cra
 |---|---|
 | Successful programme submission and generated records | Tested for a two-module programme |
 | Checked-exception rollback | File-collision `IOException` rollback tested; other checked failures not exhaustively tested |
-| Nonexistent deferral decision | Missing row is translated to a business exception; dedicated test outstanding |
+| Nonexistent deferral decision | Missing-row translation and no-change behavior are tested |
 | Wrong lecturer deciding a pending deferral | Assigned-lecturer scope is tested at service level |
 | Dedicated rejection success test | Optional reason and no-reason rejection tested |
 | Rejection failure after an earlier database write | Outstanding |
 | Concurrent approval/rejection attempts | Tested on HSQLDB; MySQL-specific verification outstanding |
-| Concurrent duplicate decisions | Dedicated same-decision test outstanding |
+| Concurrent duplicate decisions | Conflicting approval/rejection attempts are tested; dedicated same-outcome concurrency remains outstanding |
 | Document persistence success/failure | Programme success and collision/rollback tested; crash recovery outstanding |
 | Email delivery success/failure | Controller failure handling tested with a stub; actual SMTP delivery and durable retry outstanding |
 
@@ -539,7 +559,7 @@ The original README grouped the desired scenarios under the labels below. These 
 | S5 | A checked exception rolls back submission | Document-collision `IOException` tested |
 | A1 | Successful approval commits the decision | Module deferral approval tested |
 | A2-A3 | Failure during or after a status write rolls back the decision | Injected failure after a status update tested |
-| A4 | A decision on a missing deferral makes no changes | Missing-row exception translated; dedicated test outstanding |
+| A4 | A decision on a missing deferral makes no changes | Missing-row exception and no-change behavior tested |
 | A5-A6 | Duplicate or conflicting decisions do not change an already-decided record | Sequential and concurrent conflicting attempts tested on HSQLDB |
 | R1-R6 | Rejection succeeds or rolls back fully on staged failures | Rejection success tested; dedicated rejection failure injection outstanding |
 | Admin | Failure after an earlier write in a multi-record administrator operation rolls back all writes | Requires an identified operation and a dedicated test |
@@ -757,7 +777,7 @@ mvn clean package
 ```
 
 This performs the default build and excludes browser UI tests.
-Latest local validation: `mvn clean package` succeeded with 76 tests, 0 failures, 0 errors, and 0 skipped.
+Latest local validation: `mvn test` succeeded with 78 tests, 0 failures, 0 errors, and 0 skipped.
 
 ### DAO integration tests
 
@@ -910,8 +930,7 @@ The existing JSP, JSTL, Apache Tiles, Spring MVC, Spring JDBC, and embedded WAR 
 
 ## 21. Known Limitations
 
-- Some legacy DAO methods use `REQUIRES_NEW`.
-- Several unrelated CRUD DAO methods may commit independently.
+- Legacy operations outside the deferral and administrator CRUD areas should still be audited for transaction propagation.
 - PDF rollback cleanup is best effort and not crash-safe; SMTP delivery has no durable outbox or retry.
 - Audit/decision-history records and an administrative audit-history view are not implemented.
 - Decision authorization is scoped to the assigned lecturer, with administrator oversight.
