@@ -47,6 +47,7 @@ All repository changes described here are local. No commit, push, or deployment 
   - [13. Implemented vs Outstanding Functionality](#13-implemented-vs-outstanding-functionality)
   - [14. Database](#14-database)
     - [Deferral status](#deferral-status)
+  - [Database Installation and Default Test Accounts](#database-installation-and-default-test-accounts)
   - [15. Technologies](#15-technologies)
   - [16. Configuration](#16-configuration)
     - [Local database](#local-database)
@@ -661,6 +662,166 @@ MySQL concurrency and locking behaviour therefore should not be assumed to have 
 
 ---
 
+## Database Installation and Default Test Accounts
+
+### Database installation
+
+The installation script is [`DatabaseSetup.sql`](./DatabaseSetup.sql). It targets the MySQL database `spring_project` and:
+
+- Creates `spring_project` if it does not exist.
+- Uses `spring_project`.
+- Creates all nine application tables.
+- Inserts the default academic records, accounts, roles and pending deferral.
+- Uses `INSERT IGNORE` for seed rows so existing matching keys are not overwritten.
+- Preserves existing database objects and records; it does not drop the database.
+
+Run the script from MySQL 5.x or a compatible client:
+
+```powershell
+mysql -u <database-user> -p < DatabaseSetup.sql
+```
+
+The script is intended for a fresh development database. If you need to migrate an existing database, back it up first and use the migration scripts described in [Database](#14-database).
+
+After installation, verify the account and role mapping:
+
+```sql
+SELECT
+    u.USER_ID,
+    u.USERNAME,
+    u.ENABLED,
+    r.AUTHORITY
+FROM users u
+JOIN user_roles r ON u.USER_ID = r.USER_ID
+ORDER BY u.USER_ID;
+```
+
+Verify the pending application:
+
+```sql
+SELECT * FROM deferrals;
+```
+
+Verify the academic tables:
+
+```sql
+SELECT * FROM student;
+SELECT * FROM lecturer;
+SELECT * FROM modules;
+SELECT * FROM programme;
+SELECT * FROM registration;
+SELECT * FROM semester;
+```
+
+Expected installed counts are 2 students, 3 lecturers, 4 module offerings, 2 programmes, 4 semesters, 3 registrations, 6 users, 6 role assignments and 1 deferral.
+
+### Database structure
+
+| Table | Purpose |
+|---|---|
+| `deferrals` | Student applications, assigned lecturer, status, decision lecturer and rejection reason |
+| `lecturer` | Lecturer academic/personnel records |
+| `modules` | Module offerings and their CRN, lecturer and semester |
+| `programme` | Programme years and coordinating lecturer |
+| `registration` | Student module registrations and programme associations |
+| `semester` | Academic semesters associated with programmes |
+| `student` | Student academic/personnel records |
+| `users` | Spring Security login usernames, BCrypt passwords and enabled status |
+| `user_roles` | Spring Security authorities associated with login accounts |
+
+The `student` and `lecturer` tables contain academic/personnel information. Login credentials come from `users`, and role authorities come from `user_roles`.
+
+### Default academic data
+
+**Students**
+
+| Student ID | Name | Email |
+|---|---|---|
+| `R0004444` | Bill O'Donoghue | `billodonoghue17@myCIT.ie` |
+| `R0020934` | Jean Maguire | `jeanmaguire6@myCIT.ie` |
+
+**Lecturers**
+
+| Lecturer ID | Name | Email |
+|---|---|---|
+| `L001` | Mary Griffin | `MaryGriff@myCIT.ie` |
+| `L002` | John Murphy | `JohnM@myCIT.ie` |
+| `L003` | David Johnson | `DaveJohnson2@myCIT.ie` |
+
+**Module offerings**
+
+| Module ID | CRN | Name | Lecturer | Semester |
+|---|---:|---|---|---|
+| `COMP8016` | 22780 | Business Intelligence | `L002` | `KCLDC_Y4_S1` |
+| `COMP8016` | 24249 | Business Intelligence | `L002` | `KCMSD_Y5_S2` |
+| `COMP8038` | 23317 | Cloud Computing with Python | `L001` | `KCLDC_Y4_S1` |
+| `COMP8040` | 24248 | Cloud Application Frameworks | `L001` | `KCMSD_Y5_S2` |
+
+**Programmes and semesters**
+
+| Programme | Years | Coordinator |
+|---|---:|---|
+| `KCLDC_Y4` | 4 | `L002` |
+| `KCMSD_Y5` | 5 | `L001` |
+
+| Semester | Programme | Start | Finish |
+|---|---|---|---|
+| `KCLDC_Y4_S1` | `KCLDC_Y4` | Sept | Dec |
+| `KCLDC_Y4_S2` | `KCLDC_Y4` | Jan | May |
+| `KCMSD_Y5_S1` | `KCMSD_Y5` | Jan | May |
+| `KCMSD_Y5_S2` | `KCMSD_Y5` | Sept | Dec |
+
+**Registrations**
+
+| Student | CRN | Programme |
+|---|---:|---|
+| `R0020934` | 22780 | `KCLDC_Y4` |
+| `R0020934` | 23317 | `KCLDC_Y4` |
+| `R0004444` | 24248 | `KCMSD_Y5` |
+
+### Default login accounts
+
+All six development accounts use password `123456`. These credentials are for local development and testing only.
+
+| Username | Account | Role |
+|---|---|---|
+| `L001` | Mary Griffin | `ROLE_LECTURER` |
+| `R0004444` | Bill O'Donoghue | `ROLE_USER` |
+| `R0020934` | Jean Maguire | `ROLE_USER` |
+| `L002` | John Murphy | `ROLE_LECTURER` |
+| `L003` | David Johnson | `ROLE_LECTURER` |
+| `ADMIN` | Administrator | `ROLE_ADMIN` |
+
+The passwords are stored as the Spring Security-compatible BCrypt `$2a$10$...` hash below:
+
+```text
+$2a$10$Gsb.74ftE6ftZQdm/p2rS.bKwGCvpF6ADvabvON1d.AAiu.cff.Eu
+```
+
+The hash was generated and its match against `123456` was verified by Spring Security 3.2.5 `BCryptPasswordEncoder`.
+
+Do not reuse these credentials in production. Replace or remove the development accounts before deployment.
+
+### Default test application
+
+The database includes one pending deferral:
+
+- Student: Bill O'Donoghue (`R0004444`)
+- Module: `COMP8040`
+- Programme: `KCMSD_Y5`
+- Assigned lecturer: Mary Griffin (`L001`)
+- Status: `False` / pending
+
+Use the accounts to test:
+
+- **Student:** log in as `R0004444` or `R0020934`; view personal applications; submit a module or programme deferral; upload supporting PDF documentation.
+- **Lecturer:** log in as `L001`, `L002`, or `L003`; view applications assigned to that lecturer; download authorised documents; approve or reject assigned applications.
+- **Administrator:** log in as `ADMIN`; open the administrator dashboard; view all deferrals and access administrative management screens.
+
+The application was not launched with these MySQL seed accounts in this implementation, so live login success is not claimed.
+
+---
+
 <a id="technologies"></a>
 
 ## 15. Technologies
@@ -899,7 +1060,7 @@ CSRF protection is enabled on both security chains. Logout is handled by Spring 
 - Complete broad CRUD and all-role authentication regression coverage
 - Consider deeper PDF parsing and malware scanning
 
-The repository README intentionally does not reproduce passwords or credentials. SMTP host, credentials, sender, and recipient are environment-configured; no credentials are embedded in application configuration.
+The development database passwords are documented in [Database Installation and Default Test Accounts](#database-installation-and-default-test-accounts). These credentials are development-only. SMTP host, credentials, sender, and recipient are environment-configured; no SMTP credentials are embedded in application configuration.
 
 ---
 
